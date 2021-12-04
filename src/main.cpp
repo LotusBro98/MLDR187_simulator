@@ -2,7 +2,7 @@
 #include <iostream>
 
 int main(int argc, char* argv[]) {
-    sim::Core core;
+    Core core;
 
     core.load_image_from_hex_file(std::string(argv[1]));
     while (true) {

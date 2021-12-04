@@ -34,11 +34,14 @@ public:
     uint32_t rs1;
     uint32_t rs2;
     uint32_t rd;
+    bool is_c_ext;
 
-    static Instruction* decode(uint32_t inst);
+    void decode(uint32_t inst);
 
-private:
-    virtual void decode_by_type (uint32_t inst);
+    void decode_basic(uint32_t inst);
+    void decode_compressed(uint32_t inst);
+
+//private:
     void decode_type_R(uint32_t inst);
     void decode_type_I_JALR(uint32_t inst);
     void decode_type_I_arithm(uint32_t inst);
@@ -48,6 +51,14 @@ private:
     void decode_type_B(uint32_t inst);
     void decode_type_U(uint32_t inst);
     void decode_type_J(uint32_t inst);
+
+    void decode_type_CR(uint32_t inst);
+    void decode_type_CI(uint32_t inst);
+    void decode_type_CSS(uint32_t inst);
+    void decode_type_CIW(uint32_t inst);
+    void decode_type_CL(uint32_t inst);
+    void decode_type_CS_B(uint32_t inst);
+    void decode_type_CJ(uint32_t inst);
 };
 
 #endif //MLDR187_SIMULATOR_INSTRUCTION_H
