@@ -26,6 +26,7 @@ enum Type {
 
 #define FIELD(x, base, size) (((x) >> (base)) & ~(((uint32_t)-1) << (size)))
 #define BIT(x, n) (((x) >> (n)) & 1)
+#define SIGN_BIT(b, n) (((uint32_t)-(b)) << (n))
 
 static void (Instruction::*const decode_type[])(uint32_t inst) = {
         /* TYPE_INVALID */ nullptr,
@@ -139,7 +140,7 @@ void Instruction::decode_type_B(uint32_t inst) {
 void Instruction::decode_type_U(uint32_t inst) {
     rd = FIELD(inst, 7, 5);
     code = BIT(inst, 5) ? LUI : AUIPC;
-    immediate = FIELD(inst, 12, 20);
+    immediate = FIELD(inst, 12, 20) << 12;
 }
 
 void Instruction::decode_type_J(uint32_t inst) {
@@ -174,7 +175,7 @@ void Instruction::decode_type_S(uint32_t inst) {
 void Instruction::decode_type_I_JALR(uint32_t inst) {
     rs1 = FIELD(inst, 15, 5);
     rd = FIELD(inst, 7, 5);
-    immediate = FIELD(inst, 20, 12);
+    immediate = SIGN_BIT(BIT(inst, 31), 11) | FIELD(inst, 20, 11);
     code = JALR;
 }
 
@@ -182,7 +183,7 @@ void Instruction::decode_type_I_arithm(uint32_t inst) {
     rs1 = FIELD(inst, 15, 5);
     rd = FIELD(inst, 7, 5);
     uint32_t funct3 = FIELD(inst, 12, 3);
-    immediate = FIELD(inst, 20, 12);
+    immediate = SIGN_BIT(BIT(inst, 31), 11) | FIELD(inst, 20, 11);
     uint32_t funct =
             BIT(inst, 30) << 3 |
             funct3;
@@ -202,7 +203,7 @@ void Instruction::decode_type_I_load(uint32_t inst) {
     rs1 = FIELD(inst, 15, 5);
     rd = FIELD(inst, 7, 5);
     uint32_t funct3 = FIELD(inst, 12, 3);
-    immediate = FIELD(inst, 20, 12);
+    immediate = SIGN_BIT(BIT(inst, 31), 11) | FIELD(inst, 20, 11);
 
     static const Code code_funct[8] = {
             LB, LH, LW, ILL, LBU, LHU, ILL, ILL
@@ -228,8 +229,6 @@ void Instruction::decode_type_I_system(uint32_t inst) {
 
     code = code_funct[funct];
 }
-
-// TODO sign-extend
 
 void Instruction::decode_type_CR(uint32_t inst) {
     uint32_t bit = BIT(inst, 12);
@@ -268,20 +267,23 @@ void Instruction::decode_type_CI(uint32_t inst) {
 
     if (op == 1) {
         if (funct3 == 0) {
+            //ADDI
             code = ADDI;
             rd = r;
             rs1 = r;
-            immediate = imm;
+            immediate = SIGN_BIT(BIT(imm, 5), 5) | imm;
         } else if (funct3 == 2) {
+            // LI
             code = ADDI;
             rd = r;
             rs1 = 0;
-            immediate = imm;
+            immediate = SIGN_BIT(BIT(imm, 5), 5) | imm;
         } else if (funct3 == 3) {
             if (imm == 0) {
                 throw std::runtime_error("illegal instruction");
             }
             if (r == 2) {
+                // ADDI sp
                 code = ADDI;
                 rd = 2;
                 rs1 = 2;
@@ -290,11 +292,12 @@ void Instruction::decode_type_CI(uint32_t inst) {
                             BIT(imm, 3) << 6 |
                             BIT(imm, 1) << 7 |
                             BIT(imm, 2) << 8 |
-                            BIT(imm, 5) << 9 ;
+                        SIGN_BIT(BIT(imm, 5), 9);
             } else {
+                // LUI
                 code = LUI;
                 rd = r;
-                immediate = imm << 12;
+                immediate = (SIGN_BIT(BIT(imm, 5), 5) | imm) << 12;
             }
         } else {
             throw std::runtime_error("illegal instruction");
@@ -309,6 +312,7 @@ void Instruction::decode_type_CI(uint32_t inst) {
             rs1 = r;
             immediate = imm;
         } else if (funct3 == 2) {
+            // LW sp
             code = LW;
             rd = r;
             rs1 = 2;
@@ -390,7 +394,7 @@ void Instruction::decode_type_CJ(uint32_t inst) {
                 BIT(imm, 7) << 8  |
                 BIT(imm, 8) << 9  |
                 BIT(imm, 6) << 10 |
-                BIT(imm, 10) << 11;
+            SIGN_BIT(BIT(imm, 10), 11);
 
     code = JAL;
     rd = funct3 == 1 ? 1 : 0;
@@ -458,7 +462,7 @@ void Instruction::decode_type_CS_B(uint32_t inst) {
                     BIT(imm, 0) << 5 |
                     BIT(imm, 3) << 6 |
                     BIT(imm, 4) << 7 |
-                    BIT(imm, 7) << 8 ;
+                SIGN_BIT(BIT(imm, 7), 8);
         rs1 = 8 + r1;
         rs2 = 0;
     }
