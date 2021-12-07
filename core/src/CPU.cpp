@@ -14,7 +14,11 @@ void CPU::step() {
 }
 
 void CPU::execute(Instruction& inst) {
-    pc += 4;
+    if (inst.is_c_ext) {
+        pc += 2;
+    } else {
+        pc += 4;
+    }
 }
 
 void CPU::reset() {
