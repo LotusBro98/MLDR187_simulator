@@ -12,17 +12,34 @@ CPU::CPU(Memory *memory) {
     this->memory = memory;
 }
 
+uint32_t cnt = 0;
+
 void CPU::step() {
     Instruction inst = {};
-    uint32_t raw = fetch();
-    inst.decode(raw);
-    execute(inst);
+    try {
+        uint32_t raw = fetch();
+        inst.decode(raw);
+        execute(inst);
+    } catch (Exception& e) {
+        handle_exception(e);
+    }
+    cnt++;
 }
 
 void CPU::execute(Instruction& inst) {
     auto executor = execute_op[inst.code];
+    regs[0] = 0;
     (*this.*executor)(inst);
+    regs[0] = 0;
     pc += 4 >> inst.is_c_ext;
+}
+
+void CPU::handle_exception(CPU::Exception& e) {
+    // TODO more actions
+    csr[0x341] = pc; // mepc
+    csr[0x342] = e;  // mcause
+    pc = csr[0x305]; // mtvec
+
 }
 
 void CPU::reset() {
@@ -53,12 +70,12 @@ void CPU::execute_AUIPC(Instruction &inst) {
 
 void CPU::execute_JAL(Instruction &inst) {
     regs[inst.rd] = pc + (4 >> inst.is_c_ext);
-    pc += inst.immediate;
+    pc += inst.immediate - (4 >> inst.is_c_ext);
 }
 
 void CPU::execute_JALR(Instruction &inst) {
     regs[inst.rd] = pc + (4 >> inst.is_c_ext);
-    pc = regs[inst.rs1] + inst.immediate;
+    pc = regs[inst.rs1] + inst.immediate - (4 >> inst.is_c_ext);
 }
 
 void CPU::execute_BNE(Instruction &inst) {
