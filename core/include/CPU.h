@@ -41,6 +41,8 @@ public:
     uint32_t fetch();
     void execute(Instruction& inst);
 
+    void handle_exception(Exception &e);
+
     void execute_ILL(Instruction &inst);
     void execute_LUI(Instruction &inst);
     void execute_AUIPC(Instruction &inst);
