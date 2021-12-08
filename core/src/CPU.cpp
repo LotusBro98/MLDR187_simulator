@@ -44,7 +44,7 @@ void CPU::execute_LUI(Instruction &inst) {
 }
 
 void CPU::execute_ILL(Instruction &inst) {
-    throw std::runtime_error("Illegal instruction");
+    throw EXC_II;
 }
 
 void CPU::execute_AUIPC(Instruction &inst) {
@@ -259,6 +259,50 @@ void CPU::execute_REMU(Instruction &inst) {
     } else {
         regs[inst.rd] = rs1 % rs2;
     }
+}
+
+void CPU::execute_EBREAK(Instruction &inst) {
+    throw EXC_BREAK;
+}
+
+void CPU::execute_ECALL(Instruction &inst) {
+    // TODO user mode
+    throw EXC_ECALLM;
+}
+
+void CPU::execute_CSRRW(Instruction &inst) {
+    uint32_t tmp = regs[inst.rs1];
+    if (inst.rd != 0) {
+        regs[inst.rd] = csr[inst.immediate];
+    }
+    csr[inst.immediate] = tmp;
+}
+
+void CPU::execute_CSRRS(Instruction &inst) {
+    uint32_t tmp = regs[inst.rs1];
+    regs[inst.rd] = csr[inst.immediate];
+    csr[inst.immediate] |= tmp;
+}
+
+void CPU::execute_CSRRC(Instruction &inst) {
+    uint32_t tmp = regs[inst.rs1];
+    regs[inst.rd] = csr[inst.immediate];
+    csr[inst.immediate] &= ~tmp;
+}
+
+void CPU::execute_CSRRWI(Instruction &inst) {
+    regs[inst.rd] = csr[inst.immediate];
+    csr[inst.immediate] = inst.rs1;
+}
+
+void CPU::execute_CSRRSI(Instruction &inst) {
+    regs[inst.rd] = csr[inst.immediate];
+    csr[inst.immediate] |= inst.rs1;
+}
+
+void CPU::execute_CSRRCI(Instruction &inst) {
+    regs[inst.rd] = csr[inst.immediate];
+    csr[inst.immediate] &= ~inst.rs1;
 }
 
 void (CPU::*const execute_op[Instruction::COUNT])(Instruction& inst) = {
