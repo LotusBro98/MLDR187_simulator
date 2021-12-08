@@ -125,6 +125,142 @@ void CPU::execute_SW(Instruction &inst) {
     memory->write_word(regs[inst.rs1] + inst.immediate, regs[inst.rs2]);
 }
 
+void CPU::execute_ADDI(Instruction &inst) {
+    regs[inst.rd] = regs[inst.rs1] + inst.immediate;
+}
+
+void CPU::execute_SLTI(Instruction &inst) {
+    regs[inst.rd] = (int32_t)regs[inst.rs1] < (int32_t)inst.immediate;
+}
+
+void CPU::execute_SLTIU(Instruction &inst) {
+    regs[inst.rd] = regs[inst.rs1] < inst.immediate;
+}
+
+void CPU::execute_XORI(Instruction &inst) {
+    regs[inst.rd] = regs[inst.rs1] ^ inst.immediate;
+}
+
+void CPU::execute_ORI(Instruction &inst) {
+    regs[inst.rd] = regs[inst.rs1] | inst.immediate;
+}
+
+void CPU::execute_ANDI(Instruction &inst) {
+    regs[inst.rd] = regs[inst.rs1] & inst.immediate;
+}
+
+void CPU::execute_SLLI(Instruction &inst) {
+    regs[inst.rd] = regs[inst.rs1] << inst.immediate;
+}
+
+void CPU::execute_SRLI(Instruction &inst) {
+    regs[inst.rd] = regs[inst.rs1] >> inst.immediate;
+}
+
+void CPU::execute_SRAI(Instruction &inst) {
+    regs[inst.rd] = ((int32_t)regs[inst.rs1]) << inst.immediate;
+}
+
+void CPU::execute_ADD(Instruction &inst) {
+    regs[inst.rd] = regs[inst.rs1] + regs[inst.rs2];
+}
+
+void CPU::execute_SUB(Instruction &inst) {
+    regs[inst.rd] = regs[inst.rs1] - regs[inst.rs2];
+}
+
+void CPU::execute_SLL(Instruction &inst) {
+    regs[inst.rd] = regs[inst.rs1] << (regs[inst.rs2] & 32);
+}
+
+void CPU::execute_SLT(Instruction &inst) {
+    regs[inst.rd] = (int32_t)regs[inst.rs1] < (int32_t)regs[inst.rs2];
+}
+
+void CPU::execute_SLTU(Instruction &inst) {
+    regs[inst.rd] = regs[inst.rs1] < regs[inst.rs2];
+}
+
+void CPU::execute_XOR(Instruction &inst) {
+    regs[inst.rd] = regs[inst.rs1] ^ regs[inst.rs2];
+}
+
+void CPU::execute_SRL(Instruction &inst) {
+    regs[inst.rd] = regs[inst.rs1] >> (regs[inst.rs2] & 32);
+}
+
+void CPU::execute_SRA(Instruction &inst) {
+    regs[inst.rd] = ((int32_t)regs[inst.rs1]) >> (regs[inst.rs2] & 32);
+}
+
+void CPU::execute_OR(Instruction &inst) {
+    regs[inst.rd] = regs[inst.rs1] | regs[inst.rs2];
+}
+
+void CPU::execute_AND(Instruction &inst) {
+    regs[inst.rd] = regs[inst.rs1] & regs[inst.rs2];
+}
+
+void CPU::execute_MUL(Instruction &inst) {
+    regs[inst.rd] = regs[inst.rs1] * regs[inst.rs2];
+}
+
+void CPU::execute_MULH(Instruction &inst) {
+    regs[inst.rd] = ((int64_t)regs[inst.rs1] * (int64_t)regs[inst.rs2]) >> 32;
+}
+
+void CPU::execute_MULHSU(Instruction &inst) {
+    regs[inst.rd] = ((int64_t)regs[inst.rs1] * (uint64_t)regs[inst.rs2]) >> 32;
+}
+
+void CPU::execute_MULHU(Instruction &inst) {
+    regs[inst.rd] = ((uint64_t)regs[inst.rs1] * (uint64_t)regs[inst.rs2]) >> 32;
+}
+
+void CPU::execute_DIV(Instruction &inst) {
+    int32_t rs1 = (int32_t)regs[inst.rs1];
+    int32_t rs2 = (int32_t)regs[inst.rs2];
+    if (rs2 == 0) {
+        regs[inst.rd] = -1;
+    } else if (rs1 == INT32_MIN && rs2 == -1) {
+        regs[inst.rd] = rs1;
+    } else {
+        regs[inst.rd] = rs1 / rs2;
+    }
+}
+
+void CPU::execute_DIVU(Instruction &inst) {
+    uint32_t rs1 = regs[inst.rs1];
+    uint32_t rs2 = regs[inst.rs2];
+    if (rs2 == 0) {
+        regs[inst.rd] = -1;
+    } else {
+        regs[inst.rd] = rs1 / rs2;
+    }
+}
+
+void CPU::execute_REM(Instruction &inst) {
+    int32_t rs1 = (int32_t)regs[inst.rs1];
+    int32_t rs2 = (int32_t)regs[inst.rs2];
+    if (rs2 == 0) {
+        regs[inst.rd] = rs1;
+    } else if (rs1 == INT32_MIN && rs2 == -1) {
+        regs[inst.rd] = 0;
+    } else {
+        regs[inst.rd] = rs1 % rs2;
+    }
+}
+
+void CPU::execute_REMU(Instruction &inst) {
+    uint32_t rs1 = regs[inst.rs1];
+    uint32_t rs2 = regs[inst.rs2];
+    if (rs2 == 0) {
+        regs[inst.rd] = rs1;
+    } else {
+        regs[inst.rd] = rs1 % rs2;
+    }
+}
+
 void (CPU::*const execute_op[Instruction::COUNT])(Instruction& inst) = {
         &CPU::execute_ILL,
         &CPU::execute_LUI,
