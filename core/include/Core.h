@@ -13,7 +13,7 @@ public:
     void load_image_from_hex_file(const std::string& path);
     void step();
     void reset();
-private:
+//private:
     Memory memory;
     CPU cpu;
 };

@@ -29,6 +29,10 @@ public:
         COUNT
     };
 
+    Instruction();
+
+    explicit Instruction(Code code, uint32_t immediate = 0, uint32_t rs1 = 0, uint32_t rs2 = 0, uint32_t rd = 0, bool isCExt = false);
+
     Code code;
     uint32_t immediate;
     uint32_t rs1;

@@ -44,7 +44,7 @@ void Memory::read(uint32_t addr, void* buf, uint32_t len) {
     void* real_addr = v2p(addr);
     void* real_addr_end = v2p(addr + len - 1);
     if (real_addr == nullptr || real_addr_end == nullptr || (uint8_t*)real_addr_end - (uint8_t*)real_addr != len - 1)
-        throw CPU::EXC_LAF;
+        throw EXC_LAF;
     memcpy(buf, real_addr, len);
 }
 
@@ -52,13 +52,13 @@ void Memory::write(uint32_t addr, void* buf, uint32_t len) {
     void* real_addr = v2p(addr);
     void* real_addr_end = v2p(addr + len - 1);
     if (real_addr == nullptr || real_addr_end == nullptr || (uint8_t*)real_addr_end - (uint8_t*)real_addr != len - 1)
-        throw CPU::EXC_SAF;
+        throw EXC_SAF;
     memcpy(real_addr, buf, len);
 }
 
 uint32_t Memory::read_word(uint32_t addr) {
     if (addr % 4 != 0)
-        throw CPU::EXC_LAM;
+        throw EXC_LAM;
     uint32_t v;
     read(addr, &v, 4);
     return v;
@@ -66,7 +66,7 @@ uint32_t Memory::read_word(uint32_t addr) {
 
 uint16_t Memory::read_half(uint32_t addr) {
     if (addr % 2 != 0)
-        throw CPU::EXC_LAM;
+        throw EXC_LAM;
     uint16_t v;
     read(addr, &v, 2);
     return v;
@@ -80,13 +80,13 @@ uint8_t Memory::read_byte(uint32_t addr) {
 
 void Memory::write_word(uint32_t addr, uint32_t word) {
     if (addr % 4 != 0)
-        throw CPU::EXC_SAM;
+        throw EXC_SAM;
     write(addr, &word, 4);
 }
 
 void Memory::write_half(uint32_t addr, uint16_t half) {
     if (addr % 2 != 0)
-        throw CPU::EXC_SAM;
+        throw EXC_SAM;
     write(addr, &half, 2);
 }
 

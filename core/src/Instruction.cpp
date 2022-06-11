@@ -74,7 +74,7 @@ void Instruction::decode_basic(uint32_t inst) {
     Type type = type_by_opcode[opcode];
     auto decode_func = decode_type[type];
     if (decode_func == nullptr)
-        throw CPU::EXC_II;
+        throw EXC_II;
 
     (*this.*decode_func)(inst);
 }
@@ -93,7 +93,7 @@ void Instruction::decode_compressed(uint32_t inst) {
 
     auto decode_func = decode_type[type];
     if (decode_func == nullptr)
-        throw CPU::EXC_II;
+        throw EXC_II;
 
     (*this.*decode_func)(inst);
 }
@@ -257,7 +257,7 @@ void Instruction::decode_type_CR(uint32_t inst) {
         return;
     }
 
-    throw CPU::EXC_II;
+    throw EXC_II;
 }
 
 void Instruction::decode_type_CI(uint32_t inst) {
@@ -281,7 +281,7 @@ void Instruction::decode_type_CI(uint32_t inst) {
             immediate = SIGN_BIT(BIT(imm, 5), 5) | imm;
         } else if (funct3 == 3) {
             if (imm == 0) {
-                throw CPU::EXC_II;
+                throw EXC_II;
             }
             if (r == 2) {
                 // ADDI sp
@@ -301,12 +301,12 @@ void Instruction::decode_type_CI(uint32_t inst) {
                 immediate = (SIGN_BIT(BIT(imm, 5), 5) | imm) << 12;
             }
         } else {
-            throw CPU::EXC_II;
+            throw EXC_II;
         }
     } else if (op == 2) {
         if (funct3 == 0) {
             if (imm == 0 || BIT(imm, 5) == 1) {
-                throw CPU::EXC_II;
+                throw EXC_II;
             }
             code = SLLI;
             rd = r;
@@ -324,10 +324,10 @@ void Instruction::decode_type_CI(uint32_t inst) {
                         BIT(imm, 0) << 6 |
                         BIT(imm, 1) << 7 ;
         } else {
-            throw CPU::EXC_II;
+            throw EXC_II;
         }
     } else {
-        throw CPU::EXC_II;
+        throw EXC_II;
     }
 
 }
@@ -352,7 +352,7 @@ void Instruction::decode_type_CIW(uint32_t inst) {
     uint32_t imm = FIELD(inst, 5, 8);
 
     if (r == 0 || imm == 0) {
-        throw CPU::EXC_II;
+        throw EXC_II;
     }
 
     code = ADDI;
@@ -429,7 +429,7 @@ void Instruction::decode_type_CS_B(uint32_t inst) {
             uint32_t funct = FIELD(inst, 5, 2);
             uint32_t r2 = FIELD(inst, 2, 3);
             if (funct1 == 1) {
-                throw CPU::EXC_II;
+                throw EXC_II;
             }
             const Code codes[4] = {
                     SUB, XOR, OR, AND
@@ -442,7 +442,7 @@ void Instruction::decode_type_CS_B(uint32_t inst) {
             // Type CB
             uint32_t imm = FIELD(inst, 2, 5) | BIT(inst, 12) << 5;
             if (funct2 != 2 && BIT(imm, 5) != 0) {
-                throw CPU::EXC_II;
+                throw EXC_II;
             }
             immediate = imm;
             rd = r1;
@@ -467,4 +467,11 @@ void Instruction::decode_type_CS_B(uint32_t inst) {
         rs1 = 8 + r1;
         rs2 = 0;
     }
+}
+
+Instruction::Instruction(Instruction::Code code, uint32_t immediate, uint32_t rs1, uint32_t rs2, uint32_t rd, bool isCExt):
+    code(code), immediate(immediate), rs1(rs1), rs2(rs2), rd(rd), is_c_ext(isCExt) {}
+
+Instruction::Instruction() {
+
 }

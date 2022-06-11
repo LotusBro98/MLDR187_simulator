@@ -4,28 +4,10 @@
 #include <MemoryStorage.h>
 #include <cstdint>
 #include <Instruction.h>
+#include "enums.h"
 
 class CPU {
 public:
-    enum Exception {
-        EXC_IAM = 0, //Instruction address misaligned
-        EXC_IAF, //Instruction access fault
-        EXC_II, //Illegal instruction
-        EXC_BREAK, //Breakpoint
-        EXC_LAM, //Load address misaligned
-        EXC_LAF, //Load access fault
-        EXC_SAM, //Store/AMO address misaligned
-        EXC_SAF, //Store/AMO access fault
-        EXC_ECALLU, //Environment call from U-mode
-        EXC_ECALLS, //Environment call from S-mode
-        EXC_RES_10, //Reserved
-        EXC_ECALLM, //Environment call from M-mode
-        EXC_IPF, //Instruction page fault
-        EXC_LPF, //Load page fault
-        EXC_RES_14, //Reserved
-        EXC_SPF, //Store/AMO page fault
-    };
-
     explicit CPU(Memory * memory);
 
     void step();
@@ -35,6 +17,7 @@ public:
 
     uint32_t regs[32] = {};
     uint32_t pc = 0;
+    bool halt_request = false;
 
     uint32_t csr[0x1000] = {};
 

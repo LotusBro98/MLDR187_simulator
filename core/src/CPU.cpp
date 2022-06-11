@@ -34,7 +34,7 @@ void CPU::execute(Instruction& inst) {
     pc += 4 >> inst.is_c_ext;
 }
 
-void CPU::handle_exception(CPU::Exception& e) {
+void CPU::handle_exception(Exception& e) {
     // TODO more actions
     csr[0x341] = pc; // mepc
     csr[0x342] = e;  // mcause
