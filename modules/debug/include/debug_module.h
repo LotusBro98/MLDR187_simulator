@@ -94,7 +94,7 @@ typedef struct {
     uint8_t haltgroup;
 } hart_debug_state_t;
 
-class debug_module_t
+class debug_module_t : public Device
 {
 public:
     /*
@@ -106,11 +106,17 @@ public:
      * abstract_rti is extra run-test/idle cycles that each abstract command
      * takes to execute. Useful for testing OpenOCD.
      */
-    debug_module_t(Core *core, const debug_module_config_t &config);
+    explicit debug_module_t(const debug_module_config_t &config);
     ~debug_module_t();
 
-    bool load(reg_t addr, size_t len, uint8_t* bytes);
-    bool store(reg_t addr, size_t len, const uint8_t* bytes);
+    uint32_t get_start_addr() override;
+
+    uint32_t get_end_addr() override;
+
+    uint32_t read(uint32_t addr, uint32_t len) override;
+    void write(uint32_t addr, uint32_t value, uint32_t len) override;
+
+    void tick() override;
 
     // Debug Module Interface that the debugger (in our case through JTAG DTM)
     // uses to access the DM.
@@ -138,8 +144,6 @@ private:
     // R/W this through custom registers, to allow debuggers to test that
     // functionality.
     unsigned custom_base;
-
-    Core *core;
 
     uint8_t debug_rom_whereto[4];
     uint8_t debug_abstract[debug_abstract_size * 4];

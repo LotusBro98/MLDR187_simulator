@@ -4,6 +4,8 @@
 #include <MemoryStorage.h>
 #include <string>
 #include "CPU.h"
+#include "Device.h"
+#include "Bus.h"
 
 class Core {
 public:
@@ -11,11 +13,14 @@ public:
     ~Core();
 
     void load_image_from_hex_file(const std::string& path);
+    void init();
     void step();
     void reset();
 //private:
-    Memory memory;
+    Bus bus;
     CPU cpu;
 };
+
+extern Core core;
 
 #endif //MLDR187_SIMULATOR_CORE_H

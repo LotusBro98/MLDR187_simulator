@@ -29,6 +29,9 @@ enum Type {
 #define BIT(x, n) (((x) >> (n)) & 1)
 #define SIGN_BIT(b, n) (((uint32_t)-(b)) << (n))
 
+#define SET_FIELD(x, base, size, val) x = ((x) & ~((~(((uint32_t)-1) << (size))) << (base))) | (((val) & ~(((uint32_t)-1) << (size))) << (base))
+#define SET_BIT(x, n, val) x = ((x) & ~(1 << (n))) | (((val) & 1) << (n))
+
 static void (Instruction::*const decode_type[])(uint32_t inst) = {
         /* TYPE_INVALID */ nullptr,
         /* TYPE_R */ &Instruction::decode_type_R,
@@ -50,6 +53,27 @@ static void (Instruction::*const decode_type[])(uint32_t inst) = {
         /* TYPE_CJ */ &Instruction::decode_type_CJ,
 };
 
+//static uint32_t (Instruction::*const encode_type[])() = {
+//        /* TYPE_INVALID */ nullptr,
+//        /* TYPE_R */ 0/*&Instruction::decode_type_R*/,
+//        /* TYPE_I */ 0/*&Instruction::decode_type_I_JALR*/,
+//        /* TYPE_I */ 0/*&Instruction::decode_type_I_arithm*/,
+//        /* TYPE_I */ 0/*&Instruction::decode_type_I_system*/,
+//        /* TYPE_I */ &Instruction::encode_type_I_load,
+//        /* TYPE_S */ &Instruction::encode_type_S,
+//        /* TYPE_B */ 0/*&Instruction::decode_type_B*/,
+//        /* TYPE_U */ 0/*&Instruction::decode_type_U*/,
+//        /* TYPE_J */ 0/*&Instruction::decode_type_J*/,
+//
+//        /* TYPE_CR */ 0/*&Instruction::decode_type_CR*/,
+//        /* TYPE_CI */ 0/*&Instruction::decode_type_CI*/,
+//        /* TYPE_CSS */ 0/*&Instruction::decode_type_CSS*/,
+//        /* TYPE_CIW */ 0/*&Instruction::decode_type_CIW*/,
+//        /* TYPE_CL */ 0/*&Instruction::decode_type_CL*/,
+//        /* TYPE_CS_B */ 0/*&Instruction::decode_type_CS_B*/,
+//        /* TYPE_CJ */ 0/*&Instruction::decode_type_CJ*/,
+//};
+
 void Instruction::decode(uint32_t inst) {
     uint32_t opcode = inst & 0x7f;
     if ((opcode & 0x3) == 0x3) {
@@ -64,7 +88,7 @@ void Instruction::decode(uint32_t inst) {
 
 void Instruction::decode_basic(uint32_t inst) {
     static const Type type_by_opcode[32] = {
-        TYPE_I_LOAD,  TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_I_ARITHM, TYPE_U,       TYPE_INVALID, TYPE_INVALID,
+        TYPE_I_LOAD,  TYPE_INVALID, TYPE_INVALID, TYPE_I_SYSTEM, TYPE_I_ARITHM, TYPE_U,       TYPE_INVALID, TYPE_INVALID,
         TYPE_S,       TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_R,        TYPE_U,       TYPE_INVALID, TYPE_INVALID,
         TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID,  TYPE_INVALID, TYPE_INVALID, TYPE_INVALID,
         TYPE_B,       TYPE_I_JALR,  TYPE_INVALID, TYPE_J,       TYPE_I_SYSTEM, TYPE_INVALID, TYPE_INVALID, TYPE_INVALID
@@ -213,11 +237,34 @@ void Instruction::decode_type_I_load(uint32_t inst) {
     code = code_funct[funct3];
 }
 
+#define MATCH_MRET 0x30200073
+#define MATCH_DRET 0x7b200073
+
+#define MATCH_FENCE 0xf
+#define MASK_FENCE  0x707f
+#define MATCH_FENCE_I 0x100f
+#define MASK_FENCE_I  0x707f
+#define MATCH_WFI 0x10500073
+
 void Instruction::decode_type_I_system(uint32_t inst) {
     rs1 = FIELD(inst, 15, 5);
     rd = FIELD(inst, 7, 5);
     uint32_t funct3 = FIELD(inst, 12, 3);
     immediate = FIELD(inst, 20, 12);
+
+    if (inst == MATCH_MRET) {
+        code = MRET;
+        return;
+    } else if (inst == MATCH_DRET) {
+        code = DRET;
+        return;
+    } else if ((inst & MASK_FENCE) == MATCH_FENCE || (inst & MASK_FENCE_I) == MATCH_FENCE_I) {
+        code = NOP;
+        return;
+    } else if (inst == MATCH_WFI) {
+        code = NOP;
+        return;
+    }
 
     uint32_t funct =
             BIT(inst, 20) << 3 |
@@ -474,4 +521,91 @@ Instruction::Instruction(Instruction::Code code, uint32_t immediate, uint32_t rs
 
 Instruction::Instruction() {
 
+}
+
+//uint32_t Instruction::encode() {
+//    const Type type_by_op[Code::COUNT] = {
+//        [LW] = TYPE_I_LOAD,
+//        [SW] = TYPE_S,
+//    };
+//
+//    Type type = type_by_op[this->code];
+//    auto encode_func = encode_type[type];
+//    if (encode_func == nullptr)
+//        throw EXC_II;
+//
+//    return (*this.*encode_func)();
+//}
+//
+//uint32_t Instruction::encode_type_S() {
+//    const uint32_t funct3_code[Code::COUNT] = {
+//        [SB] = 0,
+//        [SH] = 1,
+//        [SW] = 2
+//    };
+//
+//    uint32_t inst = 0;
+//    SET_FIELD(inst, 15, 5, rs1);
+//    SET_FIELD(inst, 20, 5, rs2);
+//    SET_FIELD(inst, 12, 3, funct3_code[code]);
+//
+//    SET_FIELD(inst, 25, 6, FIELD(immediate, 5, 6));
+//    SET_FIELD(inst, 8, 6, FIELD(immediate, 5, 6));
+//
+//    immediate =
+//            (BIT(inst, 31) ? 0xfffff800 : 0) |
+//            FIELD(inst, 25, 6) << 5 |
+//            FIELD(inst, 8, 4) << 1 |
+//            BIT(inst, 7) << 1;
+//}
+
+#define MATCH_LW 0x2003
+#define MATCH_SW 0x2023
+#define MATCH_EBREAK 0x100073
+#define MATCH_JAL 0x6f
+#define MATCH_CSRRW 0x1073
+#define MATCH_CSRRS 0x2073
+
+static uint32_t bits(uint32_t value, unsigned int hi, unsigned int lo) {
+    return (value >> lo) & ((1 << (hi+1-lo)) - 1);
+}
+
+static uint32_t bit(uint32_t value, unsigned int b) {
+    return (value >> b) & 1;
+}
+
+uint32_t sw(unsigned int src, unsigned int base, uint16_t offset)
+{
+    return (bits(offset, 11, 5) << 25) |
+           (src << 20) |
+           (base << 15) |
+           (bits(offset, 4, 0) << 7) |
+           MATCH_SW;
+}
+
+uint32_t lw(unsigned int rd, unsigned int base, uint16_t offset)
+{
+    return (bits(offset, 11, 0) << 20) |
+           (base << 15) |
+           (bits(rd, 4, 0) << 7) |
+           MATCH_LW;
+}
+
+uint32_t ebreak() { return MATCH_EBREAK; }
+
+uint32_t jal(unsigned int rd, uint32_t imm) {
+    return (bit(imm, 20) << 31) |
+           (bits(imm, 10, 1) << 21) |
+           (bit(imm, 11) << 20) |
+           (bits(imm, 19, 12) << 12) |
+           (rd << 7) |
+           MATCH_JAL;
+}
+
+uint32_t csrw(unsigned int source, unsigned int csr) {
+    return (csr << 20) | (source << 15) | MATCH_CSRRW;
+}
+
+uint32_t csrr(unsigned int rd, unsigned int csr) {
+    return (csr << 20) | (rd << 7) | MATCH_CSRRS;
 }

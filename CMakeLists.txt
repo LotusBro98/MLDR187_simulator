@@ -2,12 +2,21 @@ cmake_minimum_required(VERSION 3.20)
 project(MLDR187_simulator)
 set(CMAKE_CXX_STANDARD 14)
 
-include_directories(include)
+include_directories(core/include)
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_options(-DDEBUG)
+endif()
 
 add_subdirectory(core)
-add_subdirectory(debug)
+add_subdirectory(modules)
 
-aux_source_directory(src SRC)
+set(SOURCES main.cpp core/src/init.cpp)
 
-add_executable(MLDR187_simulator ${SRC})
-target_link_libraries(MLDR187_simulator core dbg)
+foreach(dir ${MOD_DIR_LIST})
+    if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/modules/${dir}/src/init.cpp")
+        set(SOURCES modules/${dir}/src/init.cpp ${SOURCES})
+    endif ()
+endforeach()
+
+add_executable(MLDR187_simulator ${SOURCES})
+target_link_libraries(MLDR187_simulator core ${MOD_LIST})

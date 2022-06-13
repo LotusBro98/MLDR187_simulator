@@ -70,6 +70,8 @@ remote_bitbang_t::remote_bitbang_t(uint16_t port, jtag_dtm_t *tap) :
     }
 
 //    fcntl(socket_fd, F_SETFL, O_NONBLOCK);
+    u_long iMode;
+    int iResult = ioctlsocket(socket_fd, FIONBIO, &iMode);
     int reuseaddr = 1;
     if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, (char *)&reuseaddr,
                    sizeof(int)) == -1) {
@@ -112,7 +114,7 @@ void remote_bitbang_t::accept()
 {
     client_fd = ::accept(socket_fd, NULL, NULL);
     if (client_fd == -1) {
-        if (errno == EAGAIN) {
+        if (errno == EAGAIN || WSAGetLastError() == WSAEWOULDBLOCK) {
             // No client waiting to connect right now.
         } else {
             fprintf(stderr, "failed to accept on socket: %s (%d)\n", strerror(errno),
@@ -121,6 +123,12 @@ void remote_bitbang_t::accept()
         }
     } else {
 //        fcntl(client_fd, F_SETFL, O_NONBLOCK);
+        u_long iMode;
+        int iResult = ioctlsocket(client_fd, FIONBIO, &iMode);
+        if (iResult != 0) {
+            fprintf(stderr, "failed to set nonblocking socket (%s) (%d)\n",
+                    strerror(errno), WSAGetLastError());
+        }
     }
 }
 
@@ -192,7 +200,7 @@ void remote_bitbang_t::execute_commands()
         recv_end = recv(client_fd, recv_buf, buf_size, 0);
 
         if (recv_end == -1) {
-            if (errno == EAGAIN) {
+            if (errno == EAGAIN || WSAGetLastError() == WSAEWOULDBLOCK) {
                 break;
             } else {
                 fprintf(stderr, "remote_bitbang failed to read on socket: %s (%d)\n",
@@ -215,12 +223,12 @@ void remote_bitbang_t::execute_commands()
     }
 }
 
-std::thread remote_bitbang_t::start() {
-    return std::thread(&remote_bitbang_t::thread_func, *this);
-}
-
-[[noreturn]] void remote_bitbang_t::thread_func() {
-    while (true) {
-        tick();
-    }
-}
+//std::thread remote_bitbang_t::start() {
+//    return std::thread(&remote_bitbang_t::thread_func, *this);
+//}
+//
+//[[noreturn]] void remote_bitbang_t::thread_func() {
+//    while (true) {
+//        tick();
+//    }
+//}

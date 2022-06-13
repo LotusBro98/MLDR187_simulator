@@ -1,6 +1,9 @@
 #include <CPU.h>
 #include <memory.h>
 #include <Config.h>
+#include "Exception.h"
+#include "Core.h"
+#include "bits.h"
 
 #define FIELD(x, base, size) (((x) >> (base)) & ~(((uint32_t)-1) << (size)))
 #define BIT(x, n) (((x) >> (n)) & 1)
@@ -8,13 +11,75 @@
 
 extern void (CPU::*const execute_op[Instruction::COUNT])(Instruction& inst);
 
-CPU::CPU(Memory *memory) {
-    this->memory = memory;
+CPU::CPU():
+execute_op  {
+    &CPU::execute_ILL,
+    &CPU::execute_NOP,
+    &CPU::execute_LUI,
+    &CPU::execute_AUIPC,
+    &CPU::execute_JAL,
+    &CPU::execute_JALR,
+    &CPU::execute_BEQ,
+    &CPU::execute_BNE,
+    &CPU::execute_BLT,
+    &CPU::execute_BGE,
+    &CPU::execute_BLTU,
+    &CPU::execute_BGEU,
+    &CPU::execute_LB,
+    &CPU::execute_LH,
+    &CPU::execute_LW,
+    &CPU::execute_LBU,
+    &CPU::execute_LHU,
+    &CPU::execute_SB,
+    &CPU::execute_SH,
+    &CPU::execute_SW,
+    &CPU::execute_ADDI,
+    &CPU::execute_SLTI,
+    &CPU::execute_SLTIU,
+    &CPU::execute_XORI,
+    &CPU::execute_ORI,
+    &CPU::execute_ANDI,
+    &CPU::execute_SLLI,
+    &CPU::execute_SRLI,
+    &CPU::execute_SRAI,
+    &CPU::execute_ADD,
+    &CPU::execute_SUB,
+    &CPU::execute_SLL,
+    &CPU::execute_SLT,
+    &CPU::execute_SLTU,
+    &CPU::execute_XOR,
+    &CPU::execute_SRL,
+    &CPU::execute_SRA,
+    &CPU::execute_OR,
+    &CPU::execute_AND,
+    &CPU::execute_ECALL,
+    &CPU::execute_EBREAK,
+    &CPU::execute_MRET,
+    &CPU::execute_DRET,
+    &CPU::execute_CSRRW,
+    &CPU::execute_CSRRS,
+    &CPU::execute_CSRRC,
+    &CPU::execute_CSRRWI,
+    &CPU::execute_CSRRSI,
+    &CPU::execute_CSRRCI,
+    &CPU::execute_MUL,
+    &CPU::execute_MULH,
+    &CPU::execute_MULHSU,
+    &CPU::execute_MULHU,
+    &CPU::execute_DIV,
+    &CPU::execute_DIVU,
+    &CPU::execute_REM,
+    &CPU::execute_REMU,
 }
+{}
 
 uint32_t cnt = 0;
 
 void CPU::step() {
+    if (!debug_mode && halt_request) {
+        enter_debug_mode(DCSR_CAUSE_DEBUGINT);
+    }
+
     Instruction inst = {};
     try {
         uint32_t raw = fetch();
@@ -24,6 +89,13 @@ void CPU::step() {
         handle_exception(e);
     }
     cnt++;
+
+    if (single_step == 1) {
+        enter_debug_mode(DCSR_CAUSE_STEP);
+        single_step = 0;
+    } else if (single_step > 1) {
+        single_step--;
+    }
 }
 
 void CPU::execute(Instruction& inst) {
@@ -37,21 +109,29 @@ void CPU::execute(Instruction& inst) {
 void CPU::handle_exception(Exception& e) {
     // TODO more actions
     csr[0x341] = pc; // mepc
-    csr[0x342] = e;  // mcause
-    pc = csr[0x305]; // mtvec
-
+    csr[0x342] = e.code;  // mcause
+    if (debug_mode) {
+        pc = DEBUG_ROM_TVEC;
+    } else {
+        pc = csr[0x305]; // mtvec
+    }
 }
 
 void CPU::reset() {
-    pc = START_PC;
+    halt_request = debug_mode;
+    debug_mode = false;
+    single_step = 0;
     memset(regs, 0, sizeof(regs));
+    memset(csr, 0, sizeof(csr));
+    privilege = PRV_M;
+    pc = START_PC;
 }
 
 uint32_t CPU::fetch() {
-    uint32_t inst = memory->read_half(pc);
+    uint32_t inst = core.bus.read_half(pc);
     if ((inst & 0x3) == 0x3) {
         /* if not compressed */
-        inst |= memory->read_half(pc + 2) << 16;
+        inst |= core.bus.read_half(pc + 2) << 16;
     }
     return inst;
 }
@@ -74,8 +154,9 @@ void CPU::execute_JAL(Instruction &inst) {
 }
 
 void CPU::execute_JALR(Instruction &inst) {
+    uint32_t tmp = regs[inst.rs1];
     regs[inst.rd] = pc + (4 >> inst.is_c_ext);
-    pc = regs[inst.rs1] + inst.immediate - (4 >> inst.is_c_ext);
+    pc = tmp + inst.immediate - (4 >> inst.is_c_ext);
 }
 
 void CPU::execute_BNE(Instruction &inst) {
@@ -109,37 +190,37 @@ void CPU::execute_BGEU(Instruction &inst) {
 }
 
 void CPU::execute_LB(Instruction &inst) {
-    uint32_t byte = memory->read_byte(regs[inst.rs1] + inst.immediate);
+    uint32_t byte = core.bus.read_byte(regs[inst.rs1] + inst.immediate);
     regs[inst.rd] = byte | SIGN_BIT(BIT(byte, 7), 7);
 }
 
 void CPU::execute_LH(Instruction &inst) {
-    uint32_t half = memory->read_half(regs[inst.rs1] + inst.immediate);
+    uint32_t half = core.bus.read_half(regs[inst.rs1] + inst.immediate);
     regs[inst.rd] = half | SIGN_BIT(BIT(half, 15), 15);
 }
 
 void CPU::execute_LW(Instruction &inst) {
-    regs[inst.rd] = memory->read_word(regs[inst.rs1] + inst.immediate);
+    regs[inst.rd] = core.bus.read_word(regs[inst.rs1] + inst.immediate);
 }
 
 void CPU::execute_LBU(Instruction &inst) {
-    regs[inst.rd] = memory->read_byte(regs[inst.rs1] + inst.immediate);
+    regs[inst.rd] = core.bus.read_byte(regs[inst.rs1] + inst.immediate);
 }
 
 void CPU::execute_LHU(Instruction &inst) {
-    regs[inst.rd] = memory->read_half(regs[inst.rs1] + inst.immediate);
+    regs[inst.rd] = core.bus.read_half(regs[inst.rs1] + inst.immediate);
 }
 
 void CPU::execute_SB(Instruction &inst) {
-    memory->write_byte(regs[inst.rs1] + inst.immediate, regs[inst.rs2]);
+    core.bus.write_byte(regs[inst.rs1] + inst.immediate, regs[inst.rs2]);
 }
 
 void CPU::execute_SH(Instruction &inst) {
-    memory->write_half(regs[inst.rs1] + inst.immediate, regs[inst.rs2]);
+    core.bus.write_half(regs[inst.rs1] + inst.immediate, regs[inst.rs2]);
 }
 
 void CPU::execute_SW(Instruction &inst) {
-    memory->write_word(regs[inst.rs1] + inst.immediate, regs[inst.rs2]);
+    core.bus.write_word(regs[inst.rs1] + inst.immediate, regs[inst.rs2]);
 }
 
 void CPU::execute_ADDI(Instruction &inst) {
@@ -278,15 +359,6 @@ void CPU::execute_REMU(Instruction &inst) {
     }
 }
 
-void CPU::execute_EBREAK(Instruction &inst) {
-    throw EXC_BREAK;
-}
-
-void CPU::execute_ECALL(Instruction &inst) {
-    // TODO user mode
-    throw EXC_ECALLM;
-}
-
 void CPU::execute_CSRRW(Instruction &inst) {
     uint32_t tmp = regs[inst.rs1];
     if (inst.rd != 0) {
@@ -322,59 +394,53 @@ void CPU::execute_CSRRCI(Instruction &inst) {
     csr[inst.immediate] &= ~inst.rs1;
 }
 
-void (CPU::*const execute_op[Instruction::COUNT])(Instruction& inst) = {
-        &CPU::execute_ILL,
-        &CPU::execute_LUI,
-        &CPU::execute_AUIPC,
-        &CPU::execute_JAL,
-        &CPU::execute_JALR,
-        &CPU::execute_BEQ,
-        &CPU::execute_BNE,
-        &CPU::execute_BLT,
-        &CPU::execute_BGE,
-        &CPU::execute_BLTU,
-        &CPU::execute_BGEU,
-        &CPU::execute_LB,
-        &CPU::execute_LH,
-        &CPU::execute_LW,
-        &CPU::execute_LBU,
-        &CPU::execute_LHU,
-        &CPU::execute_SB,
-        &CPU::execute_SH,
-        &CPU::execute_SW,
-        &CPU::execute_ADDI,
-        &CPU::execute_SLTI,
-        &CPU::execute_SLTIU,
-        &CPU::execute_XORI,
-        &CPU::execute_ORI,
-        &CPU::execute_ANDI,
-        &CPU::execute_SLLI,
-        &CPU::execute_SRLI,
-        &CPU::execute_SRAI,
-        &CPU::execute_ADD,
-        &CPU::execute_SUB,
-        &CPU::execute_SLL,
-        &CPU::execute_SLT,
-        &CPU::execute_SLTU,
-        &CPU::execute_XOR,
-        &CPU::execute_SRL,
-        &CPU::execute_SRA,
-        &CPU::execute_OR,
-        &CPU::execute_AND,
-        &CPU::execute_ECALL,
-        &CPU::execute_EBREAK,
-        &CPU::execute_CSRRW,
-        &CPU::execute_CSRRS,
-        &CPU::execute_CSRRC,
-        &CPU::execute_CSRRWI,
-        &CPU::execute_CSRRSI,
-        &CPU::execute_CSRRCI,
-        &CPU::execute_MUL,
-        &CPU::execute_MULH,
-        &CPU::execute_MULHSU,
-        &CPU::execute_MULHU,
-        &CPU::execute_DIV,
-        &CPU::execute_DIVU,
-        &CPU::execute_REM,
-        &CPU::execute_REMU,
-};
+void CPU::execute_DRET(Instruction &inst) {
+    if (!debug_mode)
+        throw EXC_II;
+    pc = csr[0x7b1] - (4 >> inst.is_c_ext); // pc = dpc
+    privilege = csr[CSR_DCSR] & CSR_DCSR_PRV; // prv = dcsr->prv
+
+    debug_mode = false;
+    if (csr[CSR_DCSR] & CSR_DCSR_STEP) {
+        single_step = 2;
+    }
+}
+
+void CPU::execute_MRET(Instruction &inst) {
+    // todo implement
+    pc = csr[0x341] - (4 >> inst.is_c_ext); // pc = mepc
+}
+
+void CPU::execute_EBREAK(Instruction &inst) {
+    enter_debug_mode(DCSR_CAUSE_SWBP);
+    pc -= (4 >> inst.is_c_ext);
+//    throw EXC_BREAK;
+}
+
+void CPU::execute_ECALL(Instruction &inst) {
+    // TODO user mode
+    throw EXC_ECALLM;
+}
+
+void CPU::enter_debug_mode(uint32_t cause) {
+    if (debug_mode) {
+        pc = DEBUG_ROM_ENTRY;
+        return;
+    }
+
+    debug_mode = true;
+
+    uint32_t * dcsr = &csr[CSR_DCSR];
+    *dcsr &= ~(CSR_DCSR_PRV | CSR_DCSR_CAUSE);
+    *dcsr |= (cause     & ((1 << CSR_DCSR_CAUSE_LENGTH) - 1)) << CSR_DCSR_CAUSE_OFFSET;
+    *dcsr |= (privilege & ((1 << CSR_DCSR_PRV_LENGTH  ) - 1)) << CSR_DCSR_PRV_OFFSET;
+    privilege = PRV_M;
+
+    uint32_t * dpc  = &csr[0x7b1];
+    *dpc = pc;
+    pc = DEBUG_ROM_ENTRY;
+}
+
+void CPU::execute_NOP(Instruction &inst) {
+
+}

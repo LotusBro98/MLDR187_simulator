@@ -3,10 +3,11 @@
 
 #include "debug_module.h"
 #include "debug_defines.h"
-//#include "decode.h"
 
 #include "debug_rom_defines.h"
 #include "debug_rom.h"
+#include "jtag_dtm.h"
+#include "remote_bitbang.h"
 
 #define get_field(reg, mask) (((reg) & (mask)) / ((mask) & ~((mask) << 1)))
 #define set_field(reg, mask, val) (((reg) & ~(mask)) | (((val) * ((mask) & ~((mask) << 1))) & (mask)))
@@ -14,7 +15,7 @@
 #define DEBUG_START             0x0
 #define DEBUG_END               (0x1000 - 1)
 
-#if 1
+#if 0
 #  define D(x) x
 #else
 #  define D(x)
@@ -36,13 +37,13 @@ static unsigned field_width(unsigned n)
 
 ///////////////////////// debug_module_t
 
-debug_module_t::debug_module_t(Core *core, const debug_module_config_t &config) :
+debug_module_t::debug_module_t(const debug_module_config_t &config) :
+        Device(),
         config(config),
         program_buffer_bytes((config.support_impebreak ? 4 : 0) + 4*config.progbufsize),
         debug_progbuf_start(debug_data_start - program_buffer_bytes),
         debug_abstract_start(debug_progbuf_start - debug_abstract_size*4),
         custom_base(0),
-        core(core),
         // The spec lets a debugger select nonexistent harts. Create hart_state for
         // them because I'm too lazy to add the code to just ignore accesses.
         hart_state(),
@@ -51,6 +52,7 @@ debug_module_t::debug_module_t(Core *core, const debug_module_config_t &config) 
     D(fprintf(stderr, "debug_data_start=0x%x\n", debug_data_start));
     D(fprintf(stderr, "debug_progbuf_start=0x%x\n", debug_progbuf_start));
     D(fprintf(stderr, "debug_abstract_start=0x%x\n", debug_abstract_start));
+    D(fflush(stderr));
 
     program_buffer = new uint8_t[program_buffer_bytes];
 
@@ -59,14 +61,14 @@ debug_module_t::debug_module_t(Core *core, const debug_module_config_t &config) 
     memset(dmdata, 0, sizeof(dmdata));
 
     if (config.support_impebreak) {
-//        program_buffer[4*config.progbufsize] = ebreak();
-//        program_buffer[4*config.progbufsize+1] = ebreak() >> 8;
-//        program_buffer[4*config.progbufsize+2] = ebreak() >> 16;
-//        program_buffer[4*config.progbufsize+3] = ebreak() >> 24;
+        program_buffer[4*config.progbufsize] = ebreak();
+        program_buffer[4*config.progbufsize+1] = ebreak() >> 8;
+        program_buffer[4*config.progbufsize+2] = ebreak() >> 16;
+        program_buffer[4*config.progbufsize+3] = ebreak() >> 24;
     }
 
-//    write32(debug_rom_whereto, 0,
-//            jal(ZERO, debug_abstract_start - DEBUG_ROM_WHERETO));
+    write32(debug_rom_whereto, 0,
+            jal(REG_ZERO, debug_abstract_start - DEBUG_ROM_WHERETO));
 
     memset(debug_abstract, 0, sizeof(debug_abstract));
 
@@ -80,9 +82,7 @@ debug_module_t::~debug_module_t()
 
 void debug_module_t::reset()
 {
-    CPU *proc = &core->cpu;
-    if (proc)
-        proc->halt_request = false;
+    core.cpu.halt_request = false;
 
     memset(&dmcontrol, 0, sizeof(dmcontrol));
 
@@ -114,121 +114,92 @@ void debug_module_t::reset()
     challenge = rand();
 }
 
-bool debug_module_t::load(reg_t addr, size_t len, uint8_t* bytes)
+uint32_t debug_module_t::read(uint32_t addr, uint32_t len)
 {
     addr = DEBUG_START + addr;
+    const void* src = nullptr;
 
-    if (addr >= DEBUG_ROM_ENTRY &&
-        (addr + len) <= (DEBUG_ROM_ENTRY + debug_rom_raw_len)) {
-        memcpy(bytes, debug_rom_raw + addr - DEBUG_ROM_ENTRY, len);
-        return true;
+    if (addr >= DEBUG_ROM_ENTRY && (addr + len) <= (DEBUG_ROM_ENTRY + debug_rom_raw_len)) {
+        src = debug_rom_raw + addr - DEBUG_ROM_ENTRY;
+    } else if (addr >= DEBUG_ROM_WHERETO && (addr + len) <= (DEBUG_ROM_WHERETO + 4)) {
+        src = debug_rom_whereto + addr - DEBUG_ROM_WHERETO;
+    } else if (addr >= DEBUG_ROM_FLAGS && ((addr + len) <= DEBUG_ROM_FLAGS + 1024)) {
+        src = &debug_rom_flags + addr - DEBUG_ROM_FLAGS;
+    } else if (addr >= debug_abstract_start && ((addr + len) <= (debug_abstract_start + sizeof(debug_abstract)))) {
+        src = debug_abstract + addr - debug_abstract_start;
+    } else if (addr >= debug_data_start && (addr + len) <= (debug_data_start + sizeof(dmdata))) {
+        src = dmdata + addr - debug_data_start;
+    } else if (addr >= debug_progbuf_start && ((addr + len) <= (debug_progbuf_start + program_buffer_bytes))) {
+        src = program_buffer + addr - debug_progbuf_start;
+    } else {
+//        D(fprintf(stderr, "ERROR: invalid read from debug module: %zd bytes at 0x%08x\n", len, addr));
+        throw EXC_LAF;
     }
 
-    if (addr >= DEBUG_ROM_WHERETO && (addr + len) <= (DEBUG_ROM_WHERETO + 4)) {
-        memcpy(bytes, debug_rom_whereto + addr - DEBUG_ROM_WHERETO, len);
-        return true;
+    D(fprintf(stderr, "load(addr=0x%lx, len=%d, bytes=0x%08x); \n", addr, (unsigned) len, *(uint32_t*)src));
+
+    switch (len) {
+        case 1:
+            return *(uint8_t*)src;
+        case 2:
+            return *(uint16_t*)src;
+        case 4:
+            return *(uint32_t*)src;
+        default:
+            throw EXC_LAF;
     }
-
-    if (addr >= DEBUG_ROM_FLAGS && ((addr + len) <= DEBUG_ROM_FLAGS + 1024)) {
-        memcpy(bytes, &debug_rom_flags + addr - DEBUG_ROM_FLAGS, len);
-        return true;
-    }
-
-    if (addr >= debug_abstract_start && ((addr + len) <= (debug_abstract_start + sizeof(debug_abstract)))) {
-        memcpy(bytes, debug_abstract + addr - debug_abstract_start, len);
-        return true;
-    }
-
-    if (addr >= debug_data_start && (addr + len) <= (debug_data_start + sizeof(dmdata))) {
-        memcpy(bytes, dmdata + addr - debug_data_start, len);
-        return true;
-    }
-
-    if (addr >= debug_progbuf_start && ((addr + len) <= (debug_progbuf_start + program_buffer_bytes))) {
-        memcpy(bytes, program_buffer + addr - debug_progbuf_start, len);
-        return true;
-    }
-
-    D(fprintf(stderr, "ERROR: invalid load from debug module: %zd bytes at 0x%016"
-               "\n", len, addr));
-
-    return false;
 }
 
-bool debug_module_t::store(reg_t addr, size_t len, const uint8_t* bytes)
+void debug_module_t::write(uint32_t addr, uint32_t value, uint32_t len)
 {
-    D(
-            switch (len) {
-                case 4:
-                    fprintf(stderr, "store(addr=0x%lx, len=%d, bytes=0x%08x); "
-                                    "hartsel=0x%x\n", addr, (unsigned) len, *(uint32_t *) bytes,
-                            dmcontrol.hartsel);
-                    break;
-                default:
-                    fprintf(stderr, "store(addr=0x%lx, len=%d, bytes=...); "
-                                    "hartsel=0x%x\n", addr, (unsigned) len, dmcontrol.hartsel);
-                    break;
-            }
-    );
-
-    uint8_t id_bytes[4];
-    uint32_t id = 0;
-    if (len == 4) {
-        memcpy(id_bytes, bytes, 4);
-        id = read32(id_bytes, 0);
-    }
+    D(fprintf(stderr, "store(addr=0x%lx, len=%d, bytes=0x%08x); \n", addr, (unsigned) len, value));
 
     addr = DEBUG_START + addr;
+    const void* dst = nullptr;
 
     if (addr >= debug_data_start && (addr + len) <= (debug_data_start + sizeof(dmdata))) {
-        memcpy(dmdata + addr - debug_data_start, bytes, len);
-        return true;
+        dst = dmdata + addr - debug_data_start;
+    } else if (addr >= debug_progbuf_start && ((addr + len) <= (debug_progbuf_start + program_buffer_bytes))) {
+        dst = program_buffer + addr - debug_progbuf_start;
     }
-
-    if (addr >= debug_progbuf_start && ((addr + len) <= (debug_progbuf_start + program_buffer_bytes))) {
-        memcpy(program_buffer + addr - debug_progbuf_start, bytes, len);
-
-        return true;
+    else if (addr == DEBUG_ROM_HALTED) {
+        hart_state.halted = true;
+        if (!(debug_rom_flags & (1 << DEBUG_ROM_FLAG_GO)))
+            abstract_command_completed = true;
     }
-
-    if (addr == DEBUG_ROM_HALTED) {
-        assert (len == 4);
-        if (!hart_state.halted) {
-            hart_state.halted = true;
-        }
-        if (dmcontrol.hartsel == id) {
-            if (0 == (debug_rom_flags & (1 << DEBUG_ROM_FLAG_GO))){
-                if (dmcontrol.hartsel == id) {
-                    abstract_command_completed = true;
-                }
-            }
-        }
-        return true;
-    }
-
-    if (addr == DEBUG_ROM_GOING) {
-        assert(len == 4);
+    else if (addr == DEBUG_ROM_GOING) {
         debug_rom_flags &= ~(1 << DEBUG_ROM_FLAG_GO);
-        return true;
     }
-
-    if (addr == DEBUG_ROM_RESUMING) {
-        assert (len == 4);
+    else if (addr == DEBUG_ROM_RESUMING) {
         hart_state.halted = false;
         hart_state.resumeack = true;
         debug_rom_flags &= ~(1 << DEBUG_ROM_FLAG_RESUME);
-        return true;
     }
-
-    if (addr == DEBUG_ROM_EXCEPTION) {
-        if (abstractcs.cmderr == CMDERR_NONE) {
+    else if (addr == DEBUG_ROM_EXCEPTION) {
+        if (abstractcs.cmderr == CMDERR_NONE)
             abstractcs.cmderr = CMDERR_EXCEPTION;
-        }
-        return true;
+    }
+    else {
+        D(fprintf(stderr, "ERROR: invalid store to debug module: %zd bytes at 0x%016\n", len, addr));
+        throw EXC_SAF;
     }
 
-    D(fprintf(stderr, "ERROR: invalid store to debug module: %zd bytes at 0x%016\n", len, addr));
-    return false;
+    if (dst == nullptr)
+        return;
+
+    switch (len) {
+        case 1:
+            *(uint8_t*)dst = value;
+            return;
+        case 2:
+            *(uint16_t*)dst = value;
+            return;
+        case 4:
+            *(uint32_t*)dst = value;
+            return;
+        default:
+            throw EXC_SAF;
+    }
 }
 
 void debug_module_t::write32(uint8_t *memory, unsigned int index, uint32_t value)
@@ -280,11 +251,11 @@ void debug_module_t::sb_read()
     reg_t address = ((uint64_t) sbaddress[1] << 32) | sbaddress[0];
     try {
         if (sbcs.sbaccess == 0 && config.max_sba_data_width >= 8) {
-            sbdata[0] = core->memory.read_byte(address);
+            sbdata[0] = core.bus.read_byte(address);
         } else if (sbcs.sbaccess == 1 && config.max_sba_data_width >= 16) {
-            sbdata[0] = core->memory.read_half(address);
+            sbdata[0] = core.bus.read_half(address);
         } else if (sbcs.sbaccess == 2 && config.max_sba_data_width >= 32) {
-            sbdata[0] = core->memory.read_word(address);
+            sbdata[0] = core.bus.read_word(address);
         } else {
             sbcs.error = 3;
         }
@@ -298,11 +269,11 @@ void debug_module_t::sb_write()
     reg_t address = ((uint64_t) sbaddress[1] << 32) | sbaddress[0];
     D(fprintf(stderr, "sb_write() 0x%x @ 0x%lx\n", sbdata[0], address));
     if (sbcs.sbaccess == 0 && config.max_sba_data_width >= 8) {
-        core->memory.write_byte(address, sbdata[0]);
+        core.bus.write_byte(address, sbdata[0]);
     } else if (sbcs.sbaccess == 1 && config.max_sba_data_width >= 16) {
-        core->memory.write_half(address, sbdata[0]);
+        core.bus.write_half(address, sbdata[0]);
     } else if (sbcs.sbaccess == 2 && config.max_sba_data_width >= 32) {
-        core->memory.write_word(address, sbdata[0]);
+        core.bus.write_word(address, sbdata[0]);
     } else {
         sbcs.error = 3;
     }
@@ -504,120 +475,95 @@ bool debug_module_t::perform_abstract_command()
         return true;
     }
 
-    if ((command >> 24) == 0) {
-        // register access
-        unsigned size = get_field(command, AC_ACCESS_REGISTER_AARSIZE);
-        bool write = get_field(command, AC_ACCESS_REGISTER_WRITE);
-        unsigned regno = get_field(command, AC_ACCESS_REGISTER_REGNO);
+    if ((command >> 24) != 0) {
+        abstractcs.cmderr = CMDERR_NOTSUP;
+        return true;
+    }
 
-        if (!hart_state.halted) {
-            abstractcs.cmderr = CMDERR_HALTRESUME;
+    if (!hart_state.halted) {
+        abstractcs.cmderr = CMDERR_HALTRESUME;
+        return true;
+    }
+
+    // register access
+    unsigned size = get_field(command, AC_ACCESS_REGISTER_AARSIZE);
+    bool write = get_field(command, AC_ACCESS_REGISTER_WRITE);
+    unsigned regno = get_field(command, AC_ACCESS_REGISTER_REGNO);
+
+    if (size != 2) {
+        abstractcs.cmderr = CMDERR_NOTSUP;
+        return true;
+    }
+
+    if (command == 0x271009) {
+        command += 1;
+        command -= 1;
+    }
+
+    unsigned i = 0;
+    if (get_field(command, AC_ACCESS_REGISTER_TRANSFER)) {
+        if (regno < 0x1000 && config.support_abstract_csr_access) {
+            write32(debug_abstract, i++, csrw(REG_S0, CSR_DSCRATCH0));
+            if (write) {
+                write32(debug_abstract, i++, lw(REG_S0, REG_ZERO, debug_data_start));
+                write32(debug_abstract, i++, csrw(REG_S0, regno));
+            } else {
+                write32(debug_abstract, i++, csrr(REG_S0, regno));
+                write32(debug_abstract, i++, sw(REG_S0, REG_ZERO, debug_data_start));
+            }
+            write32(debug_abstract, i++, csrr(REG_S0, CSR_DSCRATCH0));
+        } else if (regno >= 0x1000 && regno < 0x1020) {
+            unsigned regnum = regno - 0x1000;
+
+            if (write)
+                write32(debug_abstract, i++, lw(regnum, REG_ZERO, debug_data_start));
+            else
+                write32(debug_abstract, i++, sw(regnum, REG_ZERO, debug_data_start));
+
+            if (regno == 0x1000 + REG_S0 && write) {
+                /*
+                 * The exception handler starts out be restoring dscratch to s0,
+                 * which was saved before executing the abstract memory region. Since
+                 * we just wrote s0, also make sure to write that same value to
+                 * dscratch in case an exception occurs in a program buffer that
+                 * might be executed later.
+                 */
+                write32(debug_abstract, i++, csrw(REG_S0, CSR_DSCRATCH0));
+            }
+        } else if (regno >= 0xc000 && (regno & 1) == 1) {
+            // Support odd-numbered custom registers, to allow for debugger testing.
+            unsigned custom_number = regno - 0xc000;
+            abstractcs.cmderr = CMDERR_NONE;
+            if (write) {
+                // Writing V to custom register N will cause future reads of N to
+                // return V, reads of N-1 will return V-1, etc.
+                custom_base = read32(dmdata, 0) - custom_number;
+            } else {
+                write32(dmdata, 0, custom_number + custom_base);
+                write32(dmdata, 1, 0);
+            }
+            return true;
+
+        } else {
+            abstractcs.cmderr = CMDERR_NOTSUP;
             return true;
         }
-
-        unsigned i = 0;
-        if (get_field(command, AC_ACCESS_REGISTER_TRANSFER)) {
-            if (regno < 0x1000 && config.support_abstract_csr_access) {
-//                write32(debug_abstract, i++, csrw(S0, CSR_DSCRATCH0));
-
-                if (write) {
-                    switch (size) {
-                        case 2:
-//                            write32(debug_abstract, i++, lw(S0, ZERO, debug_data_start));
-                            break;
-                        case 3:
-//                            write32(debug_abstract, i++, ld(S0, ZERO, debug_data_start));
-                            break;
-                        default:
-                            abstractcs.cmderr = CMDERR_NOTSUP;
-                            return true;
-                    }
-//                    write32(debug_abstract, i++, csrw(S0, regno));
-
-                } else {
-//                    write32(debug_abstract, i++, csrr(S0, regno));
-                    switch (size) {
-                        case 2:
-//                            write32(debug_abstract, i++, sw(S0, ZERO, debug_data_start));
-                            break;
-                        case 3:
-//                            write32(debug_abstract, i++, sd(S0, ZERO, debug_data_start));
-                            break;
-                        default:
-                            abstractcs.cmderr = CMDERR_NOTSUP;
-                            return true;
-                    }
-                }
-//                write32(debug_abstract, i++, csrr(S0, CSR_DSCRATCH0));
-
-            } else if (regno >= 0x1000 && regno < 0x1020) {
-                unsigned regnum = regno - 0x1000;
-
-                switch (size) {
-                    case 2:
-//                        if (write)
-//                            write32(debug_abstract, i++, lw(regnum, ZERO, debug_data_start));
-//                        else
-//                            write32(debug_abstract, i++, sw(regnum, ZERO, debug_data_start));
-//                        break;
-                    case 3:
-//                        if (write)
-//                            write32(debug_abstract, i++, ld(regnum, ZERO, debug_data_start));
-//                        else
-//                            write32(debug_abstract, i++, sd(regnum, ZERO, debug_data_start));
-//                        break;
-                    default:
-                        abstractcs.cmderr = CMDERR_NOTSUP;
-                        return true;
-                }
-
-//                if (regno == 0x1000 + S0 && write) {
-//                    /*
-//                     * The exception handler starts out be restoring dscratch to s0,
-//                     * which was saved before executing the abstract memory region. Since
-//                     * we just wrote s0, also make sure to write that same value to
-//                     * dscratch in case an exception occurs in a program buffer that
-//                     * might be executed later.
-//                     */
-//                    write32(debug_abstract, i++, csrw(S0, CSR_DSCRATCH0));
-//                }
-            } else if (regno >= 0xc000 && (regno & 1) == 1) {
-                // Support odd-numbered custom registers, to allow for debugger testing.
-                unsigned custom_number = regno - 0xc000;
-                abstractcs.cmderr = CMDERR_NONE;
-                if (write) {
-                    // Writing V to custom register N will cause future reads of N to
-                    // return V, reads of N-1 will return V-1, etc.
-                    custom_base = read32(dmdata, 0) - custom_number;
-                } else {
-                    write32(dmdata, 0, custom_number + custom_base);
-                    write32(dmdata, 1, 0);
-                }
-                return true;
-
-            } else {
-                abstractcs.cmderr = CMDERR_NOTSUP;
-                return true;
-            }
-        }
-
-        if (get_field(command, AC_ACCESS_REGISTER_POSTEXEC)) {
-//            write32(debug_abstract, i,
-//                    jal(ZERO, debug_progbuf_start - debug_abstract_start - 4 * i));
-            i++;
-        } else {
-//            write32(debug_abstract, i++, ebreak());
-        }
-
-        debug_rom_flags |= 1 << DEBUG_ROM_FLAG_GO;
-        rti_remaining = config.abstract_rti;
-        abstract_command_completed = false;
-        abstract_command_completed = true; // TODO really complete command
-
-        abstractcs.busy = true;
-    } else {
-        abstractcs.cmderr = CMDERR_NOTSUP;
     }
+
+    if (get_field(command, AC_ACCESS_REGISTER_POSTEXEC)) {
+        write32(debug_abstract, i,
+                jal(REG_ZERO, debug_progbuf_start - debug_abstract_start - 4 * i));
+        i++;
+    } else {
+        write32(debug_abstract, i++, ebreak());
+    }
+
+    debug_rom_flags |= 1 << DEBUG_ROM_FLAG_GO;
+    rti_remaining = config.abstract_rti;
+    abstract_command_completed = false;
+
+    abstractcs.busy = true;
+
     return true;
 }
 
@@ -654,148 +600,136 @@ bool debug_module_t::dmi_write(unsigned address, uint32_t value)
         }
         return true;
 
-    } else {
-        switch (address) {
-            case DM_DMCONTROL:
-            {
-                if (!dmcontrol.dmactive && get_field(value, DM_DMCONTROL_DMACTIVE))
-                    reset();
-                dmcontrol.dmactive = get_field(value, DM_DMCONTROL_DMACTIVE);
-                if (!dmstatus.authenticated || !dmcontrol.dmactive)
-                    return true;
+    }
 
-                dmcontrol.haltreq = get_field(value, DM_DMCONTROL_HALTREQ);
-                dmcontrol.resumereq = get_field(value, DM_DMCONTROL_RESUMEREQ);
-                dmcontrol.hartreset = get_field(value, DM_DMCONTROL_HARTRESET);
-                dmcontrol.ndmreset = get_field(value, DM_DMCONTROL_NDMRESET);
-                if (config.support_hasel)
-                    dmcontrol.hasel = get_field(value, DM_DMCONTROL_HASEL);
-                else
-                    dmcontrol.hasel = 0;
-                dmcontrol.hartsel = get_field(value, DM_DMCONTROL_HARTSELHI) <<
-                                                                             DM_DMCONTROL_HARTSELLO_LENGTH;
-                dmcontrol.hartsel |= get_field(value, DM_DMCONTROL_HARTSELLO);
-                dmcontrol.hartsel &= 1;
-
-                if (get_field(value, DM_DMCONTROL_ACKHAVERESET)) {
-                    hart_state.havereset = false;
-                }
-                CPU *proc = &core->cpu;
-                if (proc) {
-                    proc->halt_request = dmcontrol.haltreq;
-                    if (dmcontrol.haltreq) {
-                        D(fprintf(stderr, "halt hart\n"));
-                        hart_state.halted = true;
-                    }
-                    if (dmcontrol.resumereq) {
-                        D(fprintf(stderr, "resume hart\n"));
-                        debug_rom_flags |= (1 << DEBUG_ROM_FLAG_RESUME);
-                        hart_state.resumeack = false;
-                        hart_state.halted = false;
-                    }
-                    if (dmcontrol.hartreset) {
-                        proc->reset();
-                    }
-                }
-
-                if (dmcontrol.ndmreset) {
-                    core->cpu.reset();
-                }
-            }
+    switch (address) {
+        case DM_DMCONTROL:
+        {
+            if (!dmcontrol.dmactive && get_field(value, DM_DMCONTROL_DMACTIVE))
+                reset();
+            dmcontrol.dmactive = get_field(value, DM_DMCONTROL_DMACTIVE);
+            if (!dmstatus.authenticated || !dmcontrol.dmactive)
                 return true;
 
-            case DM_COMMAND: {
-                command = value;
-                bool ret = perform_abstract_command();
-                fprintf(stderr, "abstract cmd 0x%x. Error: %d \n", command, abstractcs.cmderr);
-                return ret;
+            dmcontrol.haltreq = get_field(value, DM_DMCONTROL_HALTREQ);
+            dmcontrol.resumereq = get_field(value, DM_DMCONTROL_RESUMEREQ);
+            dmcontrol.hartreset = get_field(value, DM_DMCONTROL_HARTRESET);
+            dmcontrol.ndmreset = get_field(value, DM_DMCONTROL_NDMRESET);
+            if (config.support_hasel)
+                dmcontrol.hasel = get_field(value, DM_DMCONTROL_HASEL);
+            else
+                dmcontrol.hasel = 0;
+            dmcontrol.hartsel = get_field(value, DM_DMCONTROL_HARTSELHI) <<
+                                                                         DM_DMCONTROL_HARTSELLO_LENGTH;
+            dmcontrol.hartsel |= get_field(value, DM_DMCONTROL_HARTSELLO);
+            dmcontrol.hartsel &= 1;
+
+            if (get_field(value, DM_DMCONTROL_ACKHAVERESET)) {
+                hart_state.havereset = false;
+            }
+            core.cpu.halt_request = dmcontrol.haltreq;
+            if (dmcontrol.haltreq) {
+                D(fprintf(stderr, "halt hart\n"));
+                fflush(stderr);
+            }
+            if (dmcontrol.resumereq) {
+                D(fprintf(stderr, "resume hart\n"));
+                fflush(stderr);
+                debug_rom_flags |= (1 << DEBUG_ROM_FLAG_RESUME);
+                hart_state.resumeack = false;
+            }
+            if (dmcontrol.hartreset) {
+                core.cpu.reset();
             }
 
-            case DM_HAWINDOWSEL:
-                hawindowsel = value & 1;
-                return true;
-
-            case DM_HAWINDOW:
-            {
-                unsigned base = hawindowsel * 32;
-                for (unsigned i = 0; i < 32; i++) {
-                    unsigned n = base + i;
-                    if (n < 1) {
-//                        hart_array_mask[n] = (value >> i) & 1;
-                    }
-                }
+            if (dmcontrol.ndmreset) {
+                core.cpu.reset();
             }
-                return true;
+        }
+            return true;
 
-            case DM_ABSTRACTCS:
-                abstractcs.cmderr = (cmderr_t) (((uint32_t) (abstractcs.cmderr)) & (~(uint32_t)(get_field(value, DM_ABSTRACTCS_CMDERR))));
-                return true;
+        case DM_COMMAND: {
+            command = value;
+            bool ret = perform_abstract_command();
+            fprintf(stderr, "abstract cmd 0x%x. Error: %d \n", command, abstractcs.cmderr);
+            return ret;
+        }
 
-            case DM_ABSTRACTAUTO:
-                abstractauto.autoexecprogbuf = get_field(value,
-                                                         DM_ABSTRACTAUTO_AUTOEXECPROGBUF);
-                abstractauto.autoexecdata = get_field(value,
-                                                      DM_ABSTRACTAUTO_AUTOEXECDATA);
-                return true;
-            case DM_SBCS:
-                sbcs.readonaddr = get_field(value, DM_SBCS_SBREADONADDR);
-                sbcs.sbaccess = get_field(value, DM_SBCS_SBACCESS);
-                sbcs.autoincrement = get_field(value, DM_SBCS_SBAUTOINCREMENT);
-                sbcs.readondata = get_field(value, DM_SBCS_SBREADONDATA);
-                sbcs.error &= ~get_field(value, DM_SBCS_SBERROR);
-                return true;
-            case DM_SBADDRESS0:
-                sbaddress[0] = value;
-                if (sbcs.error == 0 && sbcs.readonaddr) {
-                    sb_read();
+        case DM_HAWINDOWSEL:
+            hawindowsel = value & 1;
+            return true;
+
+        case DM_HAWINDOW:
+            return true;
+
+        case DM_ABSTRACTCS:
+            abstractcs.cmderr = (cmderr_t) (((uint32_t) (abstractcs.cmderr)) & (~(uint32_t)(get_field(value, DM_ABSTRACTCS_CMDERR))));
+            return true;
+
+        case DM_ABSTRACTAUTO:
+            abstractauto.autoexecprogbuf = get_field(value,
+                                                     DM_ABSTRACTAUTO_AUTOEXECPROGBUF);
+            abstractauto.autoexecdata = get_field(value,
+                                                  DM_ABSTRACTAUTO_AUTOEXECDATA);
+            return true;
+        case DM_SBCS:
+            sbcs.readonaddr = get_field(value, DM_SBCS_SBREADONADDR);
+            sbcs.sbaccess = get_field(value, DM_SBCS_SBACCESS);
+            sbcs.autoincrement = get_field(value, DM_SBCS_SBAUTOINCREMENT);
+            sbcs.readondata = get_field(value, DM_SBCS_SBREADONDATA);
+            sbcs.error &= ~get_field(value, DM_SBCS_SBERROR);
+            return true;
+        case DM_SBADDRESS0:
+            sbaddress[0] = value;
+            if (sbcs.error == 0 && sbcs.readonaddr) {
+                sb_read();
+                sb_autoincrement();
+            }
+            return true;
+        case DM_SBADDRESS1:
+            sbaddress[1] = value;
+            return true;
+        case DM_SBADDRESS2:
+            sbaddress[2] = value;
+            return true;
+        case DM_SBADDRESS3:
+            sbaddress[3] = value;
+            return true;
+        case DM_SBDATA0:
+            sbdata[0] = value;
+            if (sbcs.error == 0) {
+                sb_write();
+                if (sbcs.error == 0) {
                     sb_autoincrement();
                 }
-                return true;
-            case DM_SBADDRESS1:
-                sbaddress[1] = value;
-                return true;
-            case DM_SBADDRESS2:
-                sbaddress[2] = value;
-                return true;
-            case DM_SBADDRESS3:
-                sbaddress[3] = value;
-                return true;
-            case DM_SBDATA0:
-                sbdata[0] = value;
-                if (sbcs.error == 0) {
-                    sb_write();
-                    if (sbcs.error == 0) {
-                        sb_autoincrement();
-                    }
+            }
+            return true;
+        case DM_SBDATA1:
+            sbdata[1] = value;
+            return true;
+        case DM_SBDATA2:
+            sbdata[2] = value;
+            return true;
+        case DM_SBDATA3:
+            sbdata[3] = value;
+            return true;
+        case DM_AUTHDATA:
+            D(fprintf(stderr, "debug authentication: got 0x%x; 0x%x unlocks\n", value,
+                      challenge + secret));
+            if (config.require_authentication) {
+                if (value == challenge + secret) {
+                    dmstatus.authenticated = true;
+                } else {
+                    dmstatus.authenticated = false;
+                    challenge = rand();
                 }
-                return true;
-            case DM_SBDATA1:
-                sbdata[1] = value;
-                return true;
-            case DM_SBDATA2:
-                sbdata[2] = value;
-                return true;
-            case DM_SBDATA3:
-                sbdata[3] = value;
-                return true;
-            case DM_AUTHDATA:
-                D(fprintf(stderr, "debug authentication: got 0x%x; 0x%x unlocks\n", value,
-                          challenge + secret));
-                if (config.require_authentication) {
-                    if (value == challenge + secret) {
-                        dmstatus.authenticated = true;
-                    } else {
-                        dmstatus.authenticated = false;
-                        challenge = rand();
-                    }
-                }
-                return true;
-            case DM_DMCS2:
-                if (config.support_haltgroups && get_field(value, DM_DMCS2_HGWRITE)) {
-                    hart_state.haltgroup = get_field(value, DM_DMCS2_GROUP);
-                }
-                return true;
-        }
+            }
+            return true;
+        case DM_DMCS2:
+            if (config.support_haltgroups && get_field(value, DM_DMCS2_HGWRITE)) {
+                hart_state.haltgroup = get_field(value, DM_DMCS2_GROUP);
+            }
+            return true;
     }
     return false;
 }
@@ -805,4 +739,18 @@ void debug_module_t::proc_reset(unsigned id)
     hart_state.havereset = true;
     hart_state.halted = false;
     hart_state.haltgroup = 0;
+}
+
+uint32_t debug_module_t::get_start_addr() {
+    return DEBUG_START;
+}
+
+uint32_t debug_module_t::get_end_addr() {
+    return DEBUG_END;
+}
+
+extern remote_bitbang_t remoteBitbang;
+
+void debug_module_t::tick() {
+    remoteBitbang.tick();
 }

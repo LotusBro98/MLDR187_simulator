@@ -5,21 +5,28 @@
 #include <cstdint>
 #include <Instruction.h>
 #include "enums.h"
+#include "bits.h"
+#include "Exception.h"
 
 class CPU {
 public:
-    explicit CPU(Memory * memory);
+    CPU();
 
     void step();
     void reset();
-//private:
-    Memory* memory;
 
+    bool halt_request = false;
+private:
+    void (CPU::*const execute_op[Instruction::COUNT])(Instruction& inst);
+
+    bool debug_mode = false;
+    int single_step = 0;
     uint32_t regs[32] = {};
     uint32_t pc = 0;
-    bool halt_request = false;
-
     uint32_t csr[0x1000] = {};
+    uint32_t privilege = PRV_M;
+
+    void enter_debug_mode(uint32_t cause);
 
     uint32_t fetch();
     void execute(Instruction& inst);
@@ -27,6 +34,7 @@ public:
     void handle_exception(Exception &e);
 
     void execute_ILL(Instruction &inst);
+    void execute_NOP(Instruction &inst);
     void execute_LUI(Instruction &inst);
     void execute_AUIPC(Instruction &inst);
     void execute_JAL(Instruction &inst);
@@ -66,6 +74,8 @@ public:
     void execute_AND(Instruction &inst);
     void execute_ECALL(Instruction &inst);
     void execute_EBREAK(Instruction &inst);
+    void execute_MRET(Instruction &inst);
+    void execute_DRET(Instruction &inst);
     void execute_CSRRW(Instruction &inst);
     void execute_CSRRS(Instruction &inst);
     void execute_CSRRC(Instruction &inst);

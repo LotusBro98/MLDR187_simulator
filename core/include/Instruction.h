@@ -9,6 +9,7 @@ class Instruction {
 public:
     enum Code {
         ILL = 0,
+        NOP,
 
         LUI, AUIPC,
         JAL, JALR,
@@ -21,7 +22,7 @@ public:
         ADD, SUB,
         SLL, SLT, SLTU,
         XOR, SRL, SRA, OR, AND,
-        ECALL, EBREAK,
+        ECALL, EBREAK, MRET, DRET,
         CSRRW, CSRRS, CSRRC, CSRRWI, CSRRSI, CSRRCI,
         MUL, MULH, MULHSU, MULHU,
         DIV, DIVU, REM, REMU,
@@ -45,6 +46,8 @@ public:
     void decode_basic(uint32_t inst);
     void decode_compressed(uint32_t inst);
 
+//    uint32_t encode();
+
 //private:
     void decode_type_R(uint32_t inst);
     void decode_type_I_JALR(uint32_t inst);
@@ -63,6 +66,16 @@ public:
     void decode_type_CL(uint32_t inst);
     void decode_type_CS_B(uint32_t inst);
     void decode_type_CJ(uint32_t inst);
+
+//    uint32_t encode_type_S();
+//    uint32_t encode_type_I_load();
 };
+
+uint32_t lw(uint32_t rd, uint32_t base, uint16_t offset);
+uint32_t sw(uint32_t src, uint32_t base, uint16_t offset);
+uint32_t ebreak();
+uint32_t jal(unsigned int rd, uint32_t imm);
+uint32_t csrw(unsigned int source, unsigned int csr);
+uint32_t csrr(unsigned int rd, unsigned int csr);
 
 #endif //MLDR187_SIMULATOR_INSTRUCTION_H
