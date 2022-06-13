@@ -6,7 +6,7 @@ include_directories(core/include)
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-DDEBUG)
 else()
-    add_compile_options(-O3)
+    add_compile_options(-Og)
 endif()
 
 add_subdirectory(core)

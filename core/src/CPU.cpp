@@ -93,6 +93,8 @@ static void measureIPS() {
         IPS = (uint64_t)cnt * 1000000 / delta_time;
         delta_time = 0;
         cnt = 0;
+        fprintf(stdout, "IPS = %d\n", IPS);
+        fflush(stdout);
     }
 }
 
