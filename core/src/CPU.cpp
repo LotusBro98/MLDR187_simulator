@@ -1,6 +1,7 @@
 #include <CPU.h>
 #include <memory.h>
 #include <Config.h>
+#include <chrono>
 #include "Exception.h"
 #include "Core.h"
 #include "bits.h"
@@ -74,6 +75,26 @@ execute_op  {
 {}
 
 uint32_t cnt = 0;
+uint32_t delta_time = 0;
+uint32_t IPS = 0;
+auto start = std::chrono::high_resolution_clock::now();
+
+static void measureIPS() {
+    cnt++;
+
+    if ((cnt & 0xffff) != 0)
+        return;
+
+    auto elapsed = std::chrono::high_resolution_clock::now() - start;
+    start = std::chrono::high_resolution_clock::now();
+    delta_time += std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
+
+    if (delta_time > 1000000) {
+        IPS = (uint64_t)cnt * 1000000 / delta_time;
+        delta_time = 0;
+        cnt = 0;
+    }
+}
 
 void CPU::step() {
     if (!debug_mode && halt_request) {
@@ -88,7 +109,6 @@ void CPU::step() {
     } catch (Exception& e) {
         handle_exception(e);
     }
-    cnt++;
 
     if (single_step == 1) {
         enter_debug_mode(DCSR_CAUSE_STEP);
@@ -96,6 +116,8 @@ void CPU::step() {
     } else if (single_step > 1) {
         single_step--;
     }
+
+    measureIPS();
 }
 
 void CPU::execute(Instruction& inst) {
