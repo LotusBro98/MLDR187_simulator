@@ -1,5 +1,6 @@
+#include <cstdio>
 #include "Bus.h"
-#include "enums.h"
+#include "types.h"
 #include "macros.h"
 #include "Exception.h"
 
@@ -8,9 +9,11 @@ void Bus::add_device(Device *device) {
 }
 
 Device *Bus::get_device(uint32_t addr) {
-    for (auto d : devices) {
-        if (d->is_within(addr)) {
-            return d;
+    for (int priority = DEVICE_MAX_PRIORITY; priority >= 0; priority--) {
+        for (Device * device : devices_by_priority[priority]) {
+            if (device->is_within(addr)) {
+                return device;
+            }
         }
     }
     return nullptr;
@@ -18,8 +21,6 @@ Device *Bus::get_device(uint32_t addr) {
 
 uint32_t Bus::read(uint32_t addr, uint32_t len) noexcept(false) {
     assert_param(len == 1 || len == 2 || len == 4);
-    if (len != 1 && len != 2 && len != 4)
-        throw EXC_LAF;
     if (addr % len != 0)
         throw EXC_LAM;
     Device * device = get_device(addr);
@@ -48,6 +49,7 @@ void Bus::tick() {
 
 void Bus::init() {
     for(Device * device : devices) {
+        devices_by_priority[device->get_priority()].push_back(device);
         device->init();
     }
 }

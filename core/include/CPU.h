@@ -1,10 +1,8 @@
 #ifndef MLDR187_SIMULATOR_CPU_H
 #define MLDR187_SIMULATOR_CPU_H
 
-#include <MemoryStorage.h>
 #include <cstdint>
 #include <Instruction.h>
-#include "enums.h"
 #include "bits.h"
 #include "Exception.h"
 

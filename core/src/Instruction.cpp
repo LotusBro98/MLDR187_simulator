@@ -492,8 +492,8 @@ void Instruction::decode_type_CS_B(uint32_t inst) {
                 throw EXC_II;
             }
             immediate = imm;
-            rd = r1;
-            rs1 = r1;
+            rd = 8 + r1;
+            rs1 = 8 + r1;
             const Code codes[3] = {
                 SRLI, SRAI, ANDI
             };

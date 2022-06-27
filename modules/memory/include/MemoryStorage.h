@@ -11,6 +11,7 @@
 class Memory : public Device {
 public:
     Memory(uint32_t base, uint32_t size);
+    Memory(uint32_t base, uint32_t size, uint8_t *buf, uint8_t reset_value);
     ~Memory();
 
     uint32_t read(uint32_t addr, uint32_t len) noexcept(false) override;
@@ -26,6 +27,8 @@ private:
     uint32_t base;
     uint32_t size;
     uint8_t * data;
+    bool allocated;
+    uint8_t reset_value;
 };
 
 #endif //MLDR187_SIMULATOR_MEMORY_H

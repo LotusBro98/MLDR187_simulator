@@ -5,6 +5,8 @@
 #include <set>
 
 #include "Core.h"
+#include "jtag_dtm.h"
+#include "remote_bitbang.h"
 
 typedef int reg_t;
 
@@ -180,6 +182,9 @@ private:
 
     bool abstract_command_completed;
     unsigned rti_remaining;
+
+    jtag_dtm_t jtagDtm;
+    remote_bitbang_t remoteBitbang;
 };
 
 #endif

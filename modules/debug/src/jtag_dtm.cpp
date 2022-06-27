@@ -1,6 +1,7 @@
 #include <stdio.h>
 
 #include "jtag_dtm.h"
+#include "debug_module.h"
 
 #define get_field(reg, mask) (((reg) & (mask)) / ((mask) & ~((mask) << 1)))
 #define set_field(reg, mask, val) (((reg) & ~(mask)) | (((val) * ((mask) & ~((mask) << 1))) & (mask)))

@@ -2,6 +2,7 @@
 #include <memory.h>
 #include <Config.h>
 #include <chrono>
+#include <cstdio>
 #include "Exception.h"
 #include "Core.h"
 #include "bits.h"
@@ -280,7 +281,7 @@ void CPU::execute_SRLI(Instruction &inst) {
 }
 
 void CPU::execute_SRAI(Instruction &inst) {
-    regs[inst.rd] = ((int32_t)regs[inst.rs1]) << inst.immediate;
+    regs[inst.rd] = ((int32_t)regs[inst.rs1]) >> inst.immediate;
 }
 
 void CPU::execute_ADD(Instruction &inst) {

@@ -3,6 +3,8 @@
 
 #include <cstdint>
 
+#define DEVICE_MAX_PRIORITY 2
+
 class Device {
 public:
     Device();
@@ -12,6 +14,7 @@ public:
 
     virtual uint32_t get_start_addr() = 0;
     virtual uint32_t get_end_addr() = 0;
+    virtual uint32_t get_priority();
 
     virtual void init();
     virtual void tick();
@@ -26,6 +29,10 @@ public:
     inline void write_word(uint32_t addr, uint32_t value) noexcept(false) { write(addr, value, 4); }
 
     bool is_within(uint32_t addr);
+
+protected:
+    static uint32_t read_from_mem(uint32_t addr, uint32_t len, void* buf);
+    static void write_to_mem(uint32_t addr, uint32_t value, uint32_t len, void* buf);
 };
 
 #endif //MLDR187_SIMULATOR_DEVICE_H

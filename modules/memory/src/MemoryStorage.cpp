@@ -1,25 +1,31 @@
 #include <cstdint>
 #include <vector>
-#include <MemoryStorage.h>
+#include "MemoryStorage.h"
 #include <memory.h>
-#include <CPU.h>
+#include "CPU.h"
 #include "Exception.h"
 #include "Core.h"
 
-Memory::~Memory() {
-    delete[] data;
-};
-
-void Memory::reset() {
-    memset(data, 0, size);
+Memory::Memory(uint32_t base, uint32_t size): Device(), base(base), size(size), allocated(true) {
+    data = new uint8_t[size];
+    reset_value = 0;
 }
 
-Memory::Memory(uint32_t base, uint32_t size): base(base), size(size), data(nullptr), Device() {
-    printf("0x%x 0x%x \n", get_start_addr(), get_end_addr());
+Memory::Memory(uint32_t base, uint32_t size, uint8_t *buf, uint8_t reset_value):
+    Device(), base(base), size(size), data(buf), allocated(false), reset_value(reset_value) {
+
+}
+
+Memory::~Memory() {
+    if (allocated)
+        delete[] data;
+}
+
+void Memory::reset() {
+    memset(data, reset_value, size);
 }
 
 void Memory::init() {
-    data = new uint8_t[size];
 }
 
 uint32_t Memory::read(uint32_t addr, uint32_t len) noexcept(false) {

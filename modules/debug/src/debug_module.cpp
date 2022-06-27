@@ -47,7 +47,9 @@ debug_module_t::debug_module_t(const debug_module_config_t &config) :
         // The spec lets a debugger select nonexistent harts. Create hart_state for
         // them because I'm too lazy to add the code to just ignore accesses.
         hart_state(),
-        rti_remaining(0)
+        rti_remaining(0),
+        jtagDtm(this, 5),
+        remoteBitbang(2442, &jtagDtm)
 {
     D(fprintf(stderr, "debug_data_start=0x%x\n", debug_data_start));
     D(fprintf(stderr, "debug_progbuf_start=0x%x\n", debug_progbuf_start));
@@ -748,8 +750,6 @@ uint32_t debug_module_t::get_start_addr() {
 uint32_t debug_module_t::get_end_addr() {
     return DEBUG_END;
 }
-
-extern remote_bitbang_t remoteBitbang;
 
 void debug_module_t::tick() {
     remoteBitbang.tick();

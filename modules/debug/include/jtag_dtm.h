@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "debug_module.h"
+class debug_module_t;
 
 typedef enum {
     TEST_LOGIC_RESET,
