@@ -20,6 +20,7 @@ uint32_t BKP_module::get_priority() {
 void BKP_module::reset() {
     memset(&regs, 0, sizeof(regs));
     regs.CLK = BKP_CLK_LSEON | BKP_CLK_LSERDY | BKP_CLK_LSION | BKP_CLK_LSIRDY;
+    regs.DR = 0b0001100101000001000001;
 }
 
 uint32_t BKP_module::read(uint32_t addr, uint32_t len) noexcept(false) {

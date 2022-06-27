@@ -187,8 +187,7 @@ void Instruction::decode_type_S(uint32_t inst) {
     immediate =
             (BIT(inst, 31) ? 0xfffff800 : 0) |
             FIELD(inst, 25, 6) << 5 |
-            FIELD(inst, 8, 4) << 1 |
-            BIT(inst, 7) << 1;
+            FIELD(inst, 7, 5) << 0 ;
 
     static const Code code_funct[8] = {
             SB, SH, SW, ILL, ILL, ILL, ILL, ILL

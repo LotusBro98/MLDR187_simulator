@@ -41,6 +41,8 @@ int main(int argc, char* argv[]) {
     JEDEC_SPI_Flash SPI_FLASH(MDR_SPI1_BASE, 0x200000);
     PORTA.set_callback(12, SPI_FLASH.get_cs_pin_cb());
 
+    SPI_module SPI_DISPLAY(MDR_SPI3_BASE);
+
     Flash_module INTERNAL_FLASH(FLASH_MAIN_BANK, FLASH_INFO_BANK);
 
     core.init();
