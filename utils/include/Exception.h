@@ -8,7 +8,7 @@
 
 class Exception : public std::exception {
 public:
-    Exception(int code, const char * name);
+    Exception(uint32_t code, const char * name);
     const char *what() const _GLIBCXX_TXN_SAFE_DYN _GLIBCXX_USE_NOEXCEPT override;
     const uint32_t code;
 private:

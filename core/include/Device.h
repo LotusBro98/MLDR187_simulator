@@ -8,6 +8,7 @@
 class Device {
 public:
     Device();
+    virtual ~Device();
 
     virtual uint32_t read(uint32_t addr, uint32_t len) noexcept(false) = 0;
     virtual void write(uint32_t addr, uint32_t value, uint32_t len) noexcept(false) = 0;

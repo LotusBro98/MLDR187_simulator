@@ -1,7 +1,15 @@
 #ifndef MLDR187_SIMULATOR_BITS_H
 #define MLDR187_SIMULATOR_BITS_H
 
+#define CSR_MSTATUS                         0x300
+#define CSR_MIE                             0x304
+#define CSR_MTVEC                           0x305
+#define CSR_MEPC                            0x341
+#define CSR_MCAUSE                          0x342
+#define CSR_MIP                             0x344
 #define CSR_DCSR                            0x7b0
+#define CSR_DPC                             0x7b1
+#define CSR_MCYCLE                          0xb00
 
 #define CSR_DCSR_DEBUGVER_OFFSET            28
 #define CSR_DCSR_DEBUGVER_LENGTH            4
@@ -211,5 +219,41 @@
 #define DEBUG_ROM_WHERETO 0x300
 #define DEBUG_ROM_ENTRY   0x800
 #define DEBUG_ROM_TVEC    0x808
+
+#define IRQ_U_SOFT   0
+#define IRQ_S_SOFT   1
+#define IRQ_VS_SOFT  2
+#define IRQ_M_SOFT   3
+#define IRQ_U_TIMER  4
+#define IRQ_S_TIMER  5
+#define IRQ_VS_TIMER 6
+#define IRQ_M_TIMER  7
+#define IRQ_U_EXT    8
+#define IRQ_S_EXT    9
+#define IRQ_VS_EXT   10
+#define IRQ_M_EXT    11
+#define IRQ_S_GEXT   12
+#define IRQ_COP      12
+#define IRQ_LCOF     13
+
+#define MSTATUS_UIE         0x00000001
+#define MSTATUS_SIE         0x00000002
+#define MSTATUS_HIE         0x00000004
+#define MSTATUS_MIE         0x00000008
+#define MSTATUS_UPIE        0x00000010
+#define MSTATUS_SPIE        0x00000020
+#define MSTATUS_UBE         0x00000040
+#define MSTATUS_MPIE        0x00000080
+#define MSTATUS_SPP         0x00000100
+#define MSTATUS_VS          0x00000600
+#define MSTATUS_MPP         0x00001800
+#define MSTATUS_FS          0x00006000
+#define MSTATUS_XS          0x00018000
+#define MSTATUS_MPRV        0x00020000
+#define MSTATUS_SUM         0x00040000
+#define MSTATUS_MXR         0x00080000
+#define MSTATUS_TVM         0x00100000
+#define MSTATUS_TW          0x00200000
+#define MSTATUS_TSR         0x00400000
 
 #endif //MLDR187_SIMULATOR_BITS_H

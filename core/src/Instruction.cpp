@@ -397,7 +397,7 @@ void Instruction::decode_type_CIW(uint32_t inst) {
     uint32_t r = FIELD(inst, 2, 3);
     uint32_t imm = FIELD(inst, 5, 8);
 
-    if (r == 0 || imm == 0) {
+    if (r == 0 && imm == 0) {
         throw EXC_II;
     }
 

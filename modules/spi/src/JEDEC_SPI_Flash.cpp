@@ -1,4 +1,5 @@
 #include <cstring>
+#include <fstream>
 #include "JEDEC_SPI_Flash.h"
 
 typedef enum
@@ -17,12 +18,22 @@ typedef enum
     FLASH_READ_ID = 0x9F,				/*!< Read JEDEC ID */
 } flash_command_e;
 
-JEDEC_SPI_Flash::JEDEC_SPI_Flash(uint32_t baseAddr, uint32_t size) : SPI_module(baseAddr), size(size) {
+JEDEC_SPI_Flash::JEDEC_SPI_Flash(uint32_t baseAddr, uint32_t size, const char* save_file) :
+    SPI_module(baseAddr),
+    size(size),
+    save_file(save_file)
+{
     data = new uint8_t[size];
     memset(data, 0xff, size);
+    std::ifstream save_file_fstream(save_file, std::ios_base::in | std::ios_base::binary);
+    save_file_fstream.read((char*)data, size);
+    save_file_fstream.close();
 }
 
 JEDEC_SPI_Flash::~JEDEC_SPI_Flash() {
+    std::ofstream info_bank_fstream(save_file, std::ios_base::out | std::ios_base::binary);
+    info_bank_fstream.write((char*)data, size);
+    info_bank_fstream.close();
     delete[] data;
 }
 

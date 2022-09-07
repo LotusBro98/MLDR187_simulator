@@ -6,12 +6,13 @@
 
 class JEDEC_SPI_Flash : public SPI_module {
 public:
-    JEDEC_SPI_Flash(uint32_t baseAddr, uint32_t size);
-    virtual ~JEDEC_SPI_Flash();
+    JEDEC_SPI_Flash(uint32_t baseAddr, uint32_t size, const char* save_file);
+    ~JEDEC_SPI_Flash() override;
 
 private:
     uint32_t size;
     uint8_t * data;
+    const char* save_file;
 
     uint32_t cmd_offset = 0;
     uint8_t cmd;

@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 14)
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-DDEBUG)
 else()
-    add_compile_options(-Og)
+    add_compile_options(-O3)
 endif()
 
 add_subdirectory(utils)

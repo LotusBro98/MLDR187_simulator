@@ -13,6 +13,9 @@
 
 extern void (CPU::*const execute_op[Instruction::COUNT])(Instruction& inst);
 
+static uint32_t get_mstatus_ie_for_prv(uint32_t privilege);
+static uint32_t get_mstatus_pie_for_prv(uint32_t privilege);
+
 CPU::CPU():
 execute_op  {
     &CPU::execute_ILL,
@@ -100,6 +103,8 @@ static void measureIPS() {
 }
 
 void CPU::step() {
+    csr[CSR_MCYCLE]++;
+
     if (!debug_mode && halt_request) {
         enter_debug_mode(DCSR_CAUSE_DEBUGINT);
     }
@@ -109,6 +114,7 @@ void CPU::step() {
         uint32_t raw = fetch();
         inst.decode(raw);
         execute(inst);
+        take_interrupt();
     } catch (Exception& e) {
         handle_exception(e);
     }
@@ -133,12 +139,15 @@ void CPU::execute(Instruction& inst) {
 
 void CPU::handle_exception(Exception& e) {
     // TODO more actions
-    csr[0x341] = pc; // mepc
-    csr[0x342] = e.code;  // mcause
+    csr[CSR_MSTATUS] &= ~get_mstatus_pie_for_prv(privilege);
+    csr[CSR_MSTATUS] |= get_mstatus_pie_for_prv(privilege) * ((csr[CSR_MSTATUS] & get_mstatus_ie_for_prv(privilege)) != 0);
+    csr[CSR_MSTATUS] &= ~get_mstatus_ie_for_prv(privilege);
+    csr[CSR_MEPC] = pc; // mepc
+    csr[CSR_MCAUSE] = e.code;  // mcause
     if (debug_mode) {
         pc = DEBUG_ROM_TVEC;
     } else {
-        pc = csr[0x305]; // mtvec
+        pc = csr[CSR_MTVEC]; // mtvec
     }
 }
 
@@ -293,7 +302,7 @@ void CPU::execute_SUB(Instruction &inst) {
 }
 
 void CPU::execute_SLL(Instruction &inst) {
-    regs[inst.rd] = regs[inst.rs1] << (regs[inst.rs2] & 32);
+    regs[inst.rd] = regs[inst.rs1] << (regs[inst.rs2] & (32 - 1));
 }
 
 void CPU::execute_SLT(Instruction &inst) {
@@ -309,11 +318,11 @@ void CPU::execute_XOR(Instruction &inst) {
 }
 
 void CPU::execute_SRL(Instruction &inst) {
-    regs[inst.rd] = regs[inst.rs1] >> (regs[inst.rs2] & 32);
+    regs[inst.rd] = regs[inst.rs1] >> (regs[inst.rs2] & (32 - 1));
 }
 
 void CPU::execute_SRA(Instruction &inst) {
-    regs[inst.rd] = ((int32_t)regs[inst.rs1]) >> (regs[inst.rs2] & 32);
+    regs[inst.rd] = ((int32_t)regs[inst.rs1]) >> (regs[inst.rs2] & (32 - 1));
 }
 
 void CPU::execute_OR(Instruction &inst) {
@@ -433,7 +442,8 @@ void CPU::execute_DRET(Instruction &inst) {
 
 void CPU::execute_MRET(Instruction &inst) {
     // todo implement
-    pc = csr[0x341] - (4 >> inst.is_c_ext); // pc = mepc
+    pc = csr[CSR_MEPC] - (4 >> inst.is_c_ext); // pc = mepc
+    csr[CSR_MSTATUS] |= get_mstatus_ie_for_prv(privilege) * ((csr[CSR_MSTATUS] & get_mstatus_pie_for_prv(privilege)) != 0);
 }
 
 void CPU::execute_EBREAK(Instruction &inst) {
@@ -461,11 +471,76 @@ void CPU::enter_debug_mode(uint32_t cause) {
     *dcsr |= (privilege & ((1 << CSR_DCSR_PRV_LENGTH  ) - 1)) << CSR_DCSR_PRV_OFFSET;
     privilege = PRV_M;
 
-    uint32_t * dpc  = &csr[0x7b1];
+    uint32_t * dpc  = &csr[CSR_DPC];
     *dpc = pc;
     pc = DEBUG_ROM_ENTRY;
 }
 
 void CPU::execute_NOP(Instruction &inst) {
 
+}
+
+void CPU::raise_ext_interrupt() {
+    uint32_t irq = 0;
+    switch (privilege) {
+        case PRV_U:
+            irq = 1 << IRQ_U_EXT;
+            break;
+        case PRV_M:
+            irq = 1 << IRQ_M_EXT;
+            break;
+        case PRV_S:
+            irq = 1 << IRQ_S_EXT;
+            break;
+    }
+    csr[CSR_MIP] |= csr[CSR_MIE] & irq;
+}
+
+static uint32_t get_mstatus_pie_for_prv(uint32_t privilege) {
+    switch (privilege) {
+        case PRV_U:
+            return MSTATUS_UPIE;
+        case PRV_M:
+            return MSTATUS_MPIE;
+        case PRV_S:
+            return MSTATUS_SPIE;
+        default:
+            return 0;
+    }
+}
+
+static uint32_t get_mstatus_ie_for_prv(uint32_t privilege) {
+    switch (privilege) {
+        case PRV_U:
+            return MSTATUS_UIE;
+        case PRV_M:
+            return MSTATUS_MIE;
+        case PRV_S:
+            return MSTATUS_SIE;
+        default:
+            return 0;
+    }
+}
+
+void CPU::take_interrupt() {
+    if (csr[CSR_MIP] == 0)
+        return;
+    if (debug_mode)
+        return;
+    if ((csr[CSR_MSTATUS] & get_mstatus_ie_for_prv(privilege)) == 0)
+        return;
+
+    // TODO privilege level
+    int selected_int = 0;
+    for (int i = 0; i < 14; i++) {
+        if (csr[CSR_MIP] & (1 << i)) {
+            selected_int = i;
+            break;
+        }
+    }
+
+    Exception e(0x80000000 | selected_int, "interrupt");
+    handle_exception(e);
+
+    csr[CSR_MIP] = 0;
 }

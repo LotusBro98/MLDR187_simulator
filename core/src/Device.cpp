@@ -59,3 +59,5 @@ uint32_t Device::get_priority() {
     return 0;
 }
 
+Device::~Device() = default;
+

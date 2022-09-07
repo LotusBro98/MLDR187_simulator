@@ -14,8 +14,14 @@ public:
     void step();
     void reset();
 
+    uint32_t pending_peripheral_interrupts;
+    void raise_peripheral_interrupt(uint32_t irqN);
+    bool stop_request = false;
+
     Bus bus;
     CPU cpu;
+private:
+
 };
 
 extern Core core;

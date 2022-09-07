@@ -2,6 +2,7 @@
 #include "plic.h"
 #include "macros.h"
 #include "Exception.h"
+#include "Core.h"
 
 PLIC_module::PLIC_module() : Device()
 {
@@ -28,7 +29,12 @@ void PLIC_module::reset() {
 }
 
 void PLIC_module::tick() {
-    Device::tick();
+    pending_mask = core.pending_peripheral_interrupts;
+    core.pending_peripheral_interrupts = 0;
+
+    if (take_interrupt()) {
+        core.cpu.raise_ext_interrupt();
+    }
 }
 
 
@@ -58,7 +64,7 @@ void PLIC_module::write(uint32_t addr, uint32_t value, uint32_t len) noexcept(fa
 
     switch (addr) {
         case MDR_PLIC_ICC:
-            release_interrupt(value);
+            release_interrupt(value - 1);
             break;
         case MDR_PLIC_IEM:
             enable_mask = value & ~1;
@@ -82,7 +88,7 @@ uint32_t PLIC_module::take_interrupt() {
 
     for (int i = 0; i < PLIC_N_INTERRUPTS; i++) {
         if (priority[i] > max_priority && is_enabled(i) && is_pending(i))
-            max_irq = i;
+            max_irq = i + 1;
     }
 
     return max_irq;

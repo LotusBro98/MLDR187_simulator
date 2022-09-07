@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstring>
+#include <cstdio>
 
 #include "debug_module.h"
 #include "debug_defines.h"

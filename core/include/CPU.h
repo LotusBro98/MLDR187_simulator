@@ -14,6 +14,9 @@ public:
     void reset();
 
     bool halt_request = false;
+
+    void raise_ext_interrupt();
+
 private:
     void (CPU::*const execute_op[Instruction::COUNT])(Instruction& inst);
 
@@ -23,6 +26,8 @@ private:
     uint32_t pc = 0;
     uint32_t csr[0x1000] = {};
     uint32_t privilege = PRV_M;
+
+    void take_interrupt();
 
     void enter_debug_mode(uint32_t cause);
 

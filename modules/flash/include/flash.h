@@ -6,7 +6,8 @@
 
 class Flash_module : Device {
 public:
-    explicit Flash_module(uint8_t* main_bank, uint8_t* info_bank);
+    explicit Flash_module(uint8_t* main_bank, uint8_t* info_bank, const char* main_bank_file, const char* info_bank_file);
+    ~Flash_module();
 
     uint32_t read(uint32_t addr, uint32_t len) noexcept(false) override;
     void write(uint32_t addr, uint32_t value, uint32_t len) noexcept(false) override;
@@ -26,6 +27,8 @@ private:
     MDR_EEPROM_CTRL_TypeDef regs;
     uint8_t * main_bank;
     uint8_t * info_bank;
+    const char* main_bank_file;
+    const char* info_bank_file;
 };
 
 

@@ -1,14 +1,32 @@
 #include <cstring>
 #include "flash.h"
+#include <fstream>
 
 #define MAIN_BANK_SIZE 0x40000
 #define INFO_BANK_SIZE 0x8000
 #define PAGE_SIZE 0x1000
 
-Flash_module::Flash_module(uint8_t* main_bank, uint8_t* info_bank):
-    Device(), regs(), main_bank(main_bank), info_bank(info_bank)
+Flash_module::Flash_module(uint8_t* main_bank, uint8_t* info_bank, const char* main_bank_file, const char* info_bank_file):
+    Device(), regs(), main_bank(main_bank), info_bank(info_bank),
+    main_bank_file(main_bank_file), info_bank_file(info_bank_file)
 {
+    memset(main_bank, 0xff, MAIN_BANK_SIZE);
+    memset(info_bank, 0xff, INFO_BANK_SIZE);
+    std::ifstream main_bank_fstream(main_bank_file, std::ios_base::in | std::ios_base::binary);
+    std::ifstream info_bank_fstream(info_bank_file, std::ios_base::in | std::ios_base::binary);
+    main_bank_fstream.read((char*)main_bank, MAIN_BANK_SIZE);
+    info_bank_fstream.read((char*)info_bank, INFO_BANK_SIZE);
+    main_bank_fstream.close();
+    info_bank_fstream.close();
+}
 
+Flash_module::~Flash_module() {
+    std::ofstream main_bank_fstream(main_bank_file, std::ios_base::out | std::ios_base::binary);
+    std::ofstream info_bank_fstream(info_bank_file, std::ios_base::out | std::ios_base::binary);
+    main_bank_fstream.write((char*)main_bank, MAIN_BANK_SIZE);
+    info_bank_fstream.write((char*)info_bank, INFO_BANK_SIZE);
+    main_bank_fstream.close();
+    info_bank_fstream.close();
 }
 
 uint32_t Flash_module::get_start_addr() {

@@ -11,8 +11,8 @@ Memory::Memory(uint32_t base, uint32_t size): Device(), base(base), size(size), 
     reset_value = 0;
 }
 
-Memory::Memory(uint32_t base, uint32_t size, uint8_t *buf, uint8_t reset_value):
-    Device(), base(base), size(size), data(buf), allocated(false), reset_value(reset_value) {
+Memory::Memory(uint32_t base, uint32_t size, uint8_t *buf, uint8_t reset_value, bool clear_on_reset):
+    Device(), base(base), size(size), data(buf), allocated(false), reset_value(reset_value), clear_on_reset(clear_on_reset) {
 
 }
 
@@ -22,7 +22,8 @@ Memory::~Memory() {
 }
 
 void Memory::reset() {
-    memset(data, reset_value, size);
+    if (clear_on_reset)
+        memset(data, reset_value, size);
 }
 
 void Memory::init() {

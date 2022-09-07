@@ -19,3 +19,7 @@ void Core::reset() {
 void Core::init() {
     bus.init();
 }
+
+void Core::raise_peripheral_interrupt(uint32_t irqN) {
+    pending_peripheral_interrupts |= 1 << (irqN + 1);
+}

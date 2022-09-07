@@ -108,6 +108,20 @@ remote_bitbang_t::remote_bitbang_t(uint16_t port, jtag_dtm_t *tap) :
     printf("Listening for remote bitbang connection on port %d.\n",
            ntohs(addr.sin_port));
     fflush(stdout);
+
+//    bitbang_thread = new std::thread(&remote_bitbang_t::thread_func, *this);
+}
+
+remote_bitbang_t::~remote_bitbang_t() {
+//    stop_request = true;
+//    bitbang_thread->join();
+//    delete bitbang_thread;
+}
+
+void remote_bitbang_t::thread_func() {
+    while (!stop_request) {
+        tick();
+    }
 }
 
 void remote_bitbang_t::accept()
@@ -137,7 +151,10 @@ void remote_bitbang_t::tick()
     if (client_fd > 0) {
         execute_commands();
     } else {
-        this->accept();
+        static int cnt = 0;
+        cnt = (cnt + 1) & 0xffff;
+        if (cnt == 0)
+            this->accept();
     }
 }
 
@@ -223,12 +240,3 @@ void remote_bitbang_t::execute_commands()
     }
 }
 
-//std::thread remote_bitbang_t::start() {
-//    return std::thread(&remote_bitbang_t::thread_func, *this);
-//}
-//
-//[[noreturn]] void remote_bitbang_t::thread_func() {
-//    while (true) {
-//        tick();
-//    }
-//}
